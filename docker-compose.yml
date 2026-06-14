@@ -1,0 +1,6 @@
+services:
+  game-server:
+    image: cpp-game-server:latest
+    build: .
+    ports:
+      - "8080:8080"
