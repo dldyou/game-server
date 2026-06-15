@@ -78,3 +78,6 @@ Thumbs.db
 
 # Ignore logs
 logs/
+
+# config
+config/config.ini
