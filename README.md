@@ -26,22 +26,23 @@ C++17 기반 실시간 멀티플레이어 게임 서버 프로젝트입니다.
 ## Project Structure
 
 ```bash
-game-server
-├── CMakeLists.txt
-├── Dockerfile
-├── README.md
-├── config
+game-server/
+├── config/
 │   └── config.ini
+├── src/
+│   ├── config/
+│   │   ├── Config.cpp
+│   │   └── Config.hpp
+│   ├── utils/
+│   │   ├── StringUtils.cpp
+│   │   └── StringUtils.hpp
+│   ├── main.cpp
+│   ├── server.cpp
+│   └── server.hpp
+├── .gitignore
+├── CMakeLists.txt
 ├── docker-compose.yml
-├── docs
-└── src
-    ├── config
-    │   ├── Config.cpp
-    │   └── Config.hpp
-    ├── main.cpp
-    └── utils
-        ├── StringUtils.cpp
-        └── StringUtils.hpp
+└── Dockerfile
 ```
 
 ## Configuration
@@ -93,7 +94,7 @@ docker compose logs -f
 - [x] Dockerfile 작성
 - [x] CMakeLists.txt 작성
 - [x] 설정 파일 로딩 구조 구현
-- [ ] epoll 기반 non-blocking TCP 서버 구현
+- [x] epoll 기반 non-blocking TCP 서버 구현
 - [ ] 클라이언트 세션 관리
 - [ ] 패킷 구조 설계 및 파싱
 - [ ] 게임 룸 시스템 구현
