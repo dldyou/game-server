@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <atomic>
+#include <mutex>
 
 #include "config/Config.hpp"
 
@@ -10,7 +11,8 @@ private:
     std::vector<int> client_fds;
     std::size_t client_nums = 0;
     std::atomic<bool> is_running = false;
-    std::atomic<int> wake_fd{-1};
+    int wake_fd = -1;
+    std::mutex wake_mutex;
 
     void initClients(void);
     bool addClient(int client_fd);

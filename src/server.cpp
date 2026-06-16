@@ -150,6 +150,7 @@ void Server::run(int server_fd, const ServerConfig& server_config) {
         std::cerr << "Invalid server run parameters\n";
         return;
     }
+    is_running = true;
 
     std::vector<char> buffer_in(buffer_size);
 
@@ -163,6 +164,7 @@ void Server::run(int server_fd, const ServerConfig& server_config) {
     if ((epoll_fd = epoll_create1(EPOLL_CLOEXEC)) == -1) {
         perror("epoll_create1");
         close(server_fd);
+        is_running = false;
         return;
     }
 
@@ -177,6 +179,7 @@ void Server::run(int server_fd, const ServerConfig& server_config) {
         perror("epoll_ctl");
         close(epoll_fd);
         close(server_fd);
+        is_running = false;
         return;
     }
 
@@ -184,9 +187,13 @@ void Server::run(int server_fd, const ServerConfig& server_config) {
         perror("eventfd");
         close(epoll_fd);
         close(server_fd);
+        is_running = false;
         return;
     }
-    wake_fd.store(local_wake_fd);
+    {
+        std::lock_guard<std::mutex> lock(wake_mutex);
+        wake_fd = local_wake_fd;
+    }
 
     event = {
         .events = EPOLLIN,
@@ -197,14 +204,20 @@ void Server::run(int server_fd, const ServerConfig& server_config) {
 
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, local_wake_fd, &event) == -1) {
         perror("epoll_ctl");
-        close(local_wake_fd);
-        wake_fd.store(-1);
+        {
+            std::lock_guard<std::mutex> lock(wake_mutex);
+            if (wake_fd == local_wake_fd) {
+                wake_fd = -1;
+            }
+            close(local_wake_fd);
+            local_wake_fd = -1;
+        }
         close(epoll_fd);
         close(server_fd);
+        is_running = false;
         return;
     }
 
-    is_running = true;
     while (is_running) {
         if ((event_count = epoll_wait(epoll_fd, events.data(), max_events, -1)) == -1) {
             if (errno == EINTR) {
@@ -299,19 +312,22 @@ void Server::run(int server_fd, const ServerConfig& server_config) {
 
     cleanupClients();
     if (local_wake_fd != -1) {
+        std::lock_guard<std::mutex> lock(wake_mutex);
+        if (wake_fd == local_wake_fd) {
+            wake_fd = -1;
+        }
         close(local_wake_fd);
     }
     close(epoll_fd);
     close(server_fd);
-    wake_fd.store(-1);
 }
 
 void Server::stop(void) {
     is_running = false;
 
-    const int fd = wake_fd.load();
-    if (fd != -1) {
-        if (eventfd_write(fd, 1) == -1 &&
+    std::lock_guard<std::mutex> lock(wake_mutex);
+    if (wake_fd != -1) {
+        if (eventfd_write(wake_fd, 1) == -1 &&
             errno != EAGAIN && errno != EWOULDBLOCK) {
             perror("eventfd_write");
         }
