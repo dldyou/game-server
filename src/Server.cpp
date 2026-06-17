@@ -12,30 +12,7 @@
 #include <cstdio>
 
 void Server::initClients() {
-    std::fill(client_fds.begin(), client_fds.end(), -1);
-    client_nums = 0;
-}
-
-bool Server::addClient(int client_fd) {
-    for (std::size_t i = 0; i < client_fds.size(); i++) {
-        if (client_fds[i] == -1) {
-            client_fds[i] = client_fd;
-            client_nums += 1;
-            return true;
-        }
-    }
-    return false;
-}
-
-bool Server::removeClient(int client_fd) {
-    for (std::size_t i = 0; i < client_fds.size(); i++) {
-        if (client_fds[i] == client_fd) {
-            client_fds[i] = -1;
-            client_nums -= 1;
-            return true;
-        }
-    }
-    return false;
+    sessions.clear();
 }
 
 bool Server::setNonBlocking(int fd) {
@@ -65,18 +42,15 @@ void Server::closeClient(int epoll_fd, int client_fd) {
         }
     }
 
-    removeClient(client_fd);
+    sessions.erase(client_fd);
     close(client_fd);
 }
 
 void Server::cleanupClients(void) {
-    for (std::size_t i = 0; i < client_fds.size(); i++) {
-        if (client_fds[i] != -1) {
-            close(client_fds[i]);
-            client_fds[i] = -1;
-        }
+    for (const auto& item : sessions) {
+        close(item.first);
     }
-    client_nums = 0;
+    sessions.clear();
 }
 
 int Server::init(const ServerConfig& server_config) {
@@ -92,7 +66,6 @@ int Server::init(const ServerConfig& server_config) {
         return -1;
     }
 
-    client_fds.resize(static_cast<std::size_t>(server_config.max_clients));
     initClients();
 
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
@@ -144,6 +117,7 @@ int Server::init(const ServerConfig& server_config) {
 void Server::run(int server_fd, const ServerConfig& server_config) {
     const int max_clients = server_config.max_clients;
     const int max_events = max_clients + 2;
+    const std::size_t max_sessions = static_cast<std::size_t>(max_clients);
     const std::size_t buffer_size = server_config.buffer_size;
 
     if (server_fd < 0 || max_clients <= 0 || buffer_size < 2) {
@@ -253,7 +227,7 @@ void Server::run(int server_fd, const ServerConfig& server_config) {
                 }
 
                 // client is full
-                if (client_nums >= client_fds.size()) {
+                if (sessions.size() >= max_sessions) {
                     closeClient(-1, client_fd);
                     continue;
                 }
@@ -276,12 +250,17 @@ void Server::run(int server_fd, const ServerConfig& server_config) {
                     continue;
                 }
 
-                if (!addClient(client_fd)) {
+                if (!sessions.emplace(client_fd, Session(client_fd)).second) {
                     closeClient(epoll_fd, client_fd);
                 }
             } else {
                 int client_fd = event_fd;
                 ssize_t num_bytes = 0;
+                auto session_it = sessions.find(client_fd);
+
+                if (session_it == sessions.end()) {
+                    continue;
+                }
 
                 if ((events[i].events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) != 0 &&
                     (events[i].events & EPOLLIN) == 0) {
@@ -290,11 +269,17 @@ void Server::run(int server_fd, const ServerConfig& server_config) {
                 }
 
                 if ((events[i].events & EPOLLIN) == EPOLLIN) {
+                    Session& session = session_it->second;
                     num_bytes = recv(client_fd, buffer_in.data(), buffer_in.size() - 1, 0);
 
                     if (num_bytes > 0) {
                         // process data
                         buffer_in[static_cast<std::size_t>(num_bytes)] = '\0';
+                        session.recvBuffer().insert(
+                            session.recvBuffer().end(),
+                            buffer_in.begin(),
+                            buffer_in.begin() + num_bytes
+                        );
                     } else if (num_bytes < 0) {
                         if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
                             continue;

@@ -1,22 +1,21 @@
 #pragma once
 
 #include <vector>
+#include <unordered_map>
 #include <atomic>
 #include <mutex>
 
 #include "config/Config.hpp"
+#include "Session.hpp"
 
 class Server {
 private:
-    std::vector<int> client_fds;
-    std::size_t client_nums = 0;
+    std::unordered_map<int, Session> sessions;
     std::atomic<bool> is_running = false;
     int wake_fd = -1;
     std::mutex wake_mutex;
 
     void initClients();
-    bool addClient(int client_fd);
-    bool removeClient(int client_fd);
     bool setNonBlocking(int fd);
     void closeClient(int epoll_fd, int client_fd);
     void cleanupClients();
