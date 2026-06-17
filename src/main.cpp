@@ -4,7 +4,7 @@
 #include <iostream>
 
 #include "config/Config.hpp"
-#include "server.hpp"
+#include "Server.hpp"
 
 int main(void) {
     Config config;
