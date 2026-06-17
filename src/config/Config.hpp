@@ -17,7 +17,5 @@ private:
     ServerConfig m_server;
 public:
     bool load(const std::string& path);
-    const ServerConfig& server() const {
-        return m_server;
-    }
+    const ServerConfig& server() const { return m_server; }
 };
