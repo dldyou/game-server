@@ -7,6 +7,8 @@
 #include "Server.hpp"
 
 int main(void) {
+    std::cout << std::unitbuf;
+
     Config config;
     Server server;
     int server_fd = -1;
