@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_executable(game-server
     src/main.cpp
     src/Server.cpp
-    src/Session.cpp
+    src/networks/Session.cpp
     src/config/Config.cpp
     src/utils/StringUtils.cpp
 )
