@@ -280,6 +280,9 @@ void Server::run(int server_fd, const ServerConfig& server_config) {
                             buffer_in.begin(),
                             buffer_in.begin() + num_bytes
                         );
+                        std::cout << "recv[" << client_fd << "]: ";
+                        std::cout.write(buffer_in.data(), static_cast<std::streamsize>(num_bytes));
+                        std::cout << '\n';
                     } else if (num_bytes < 0) {
                         if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
                             continue;
