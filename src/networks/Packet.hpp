@@ -1,16 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
-#pragma pack(push, 1)
-struct PacketHeader {
-    uint16_t size;
-    uint16_t type;
-    uint32_t sequence;
-};
-#pragma pack(pop);
-
-enum PacketType {
+enum PacketType : std::uint16_t {
     C2S_PING = 1,
     S2C_PONG = 2,
 
@@ -36,3 +29,12 @@ enum PacketType {
 
     S2C_ERROR = 900,
 };
+
+struct Packet {
+    PacketType type;
+    std::uint32_t sequence;
+    std::vector<char> payload;
+};
+
+inline constexpr std::size_t PacketHeaderSize = 8;
+inline constexpr std::size_t MaxPacketSize = 16 * 1024;
