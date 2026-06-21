@@ -6,7 +6,7 @@
 #include <mutex>
 
 #include "config/Config.hpp"
-#include "Session.hpp"
+#include "networks/Session.hpp"
 
 class Server {
 private:
