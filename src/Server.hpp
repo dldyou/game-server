@@ -6,7 +6,8 @@
 #include <mutex>
 
 #include "config/Config.hpp"
-#include "Session.hpp"
+#include "networks/Session.hpp"
+#include "networks/Packet.hpp"
 
 class Server {
 private:
@@ -19,6 +20,9 @@ private:
     bool setNonBlocking(int fd);
     void closeClient(int epoll_fd, int client_fd);
     void cleanupClients();
+
+    void processPackets(int epoll_fd, Session& session);
+    void handlePacket(Session& session, const Packet& packet);
 public:
     int init(const ServerConfig& server_config);
     void run(int server_fd, const ServerConfig& server_config);

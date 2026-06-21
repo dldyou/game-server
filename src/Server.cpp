@@ -1,4 +1,5 @@
 #include "Server.hpp"
+#include "networks/PacketParser.hpp"
 
 #include <arpa/inet.h>
 #include <unistd.h>
@@ -10,6 +11,54 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstdio>
+#include <span>
+
+void Server::processPackets(int epoll_fd, Session& session) {
+    std::vector<char>& buffer = session.recvBuffer();
+    std::size_t consumed_bytes = 0;
+
+    while (consumed_bytes < buffer.size()) {
+        const std::span<const char> remain(
+            buffer.data() + consumed_bytes,
+            buffer.size() - consumed_bytes
+        );
+
+        ParseResult result = PacketParser::parse(remain);
+
+        if (result.status == ParseStatus::Pending) {
+            break;
+        }
+
+        if (result.status == ParseStatus::Invalid || !result.packet) {
+            closeClient(epoll_fd, session.fd());
+            return;
+        }
+
+        handlePacket(session, *result.packet);
+        consumed_bytes += result.consumed_bytes;
+    }
+
+    if (consumed_bytes > 0) {
+        buffer.erase(
+            buffer.begin(),
+            buffer.begin() + static_cast<std::ptrdiff_t>(consumed_bytes)
+        );
+    }
+}
+
+void Server::handlePacket(Session& session, const Packet& packet) {
+    switch (packet.type) {
+    case C2S_PING:
+        std::cout << "PING from session " << session.fd() << ", sequence=" << packet.sequence << "\n";
+        break;
+    case C2S_LOGIN:
+        std::cout << "LOGIN from session " << session.fd() << ", sequence=" << packet.sequence << "\n";
+        break;
+    default:
+        std::cerr << "Unknown packet type: " << static_cast<std::uint16_t>(packet.type) << "\n";
+        break;
+    }
+}
 
 void Server::initClients() {
     sessions.clear();
@@ -274,15 +323,15 @@ void Server::run(int server_fd, const ServerConfig& server_config) {
 
                     if (num_bytes > 0) {
                         // process data
-                        buffer_in[static_cast<std::size_t>(num_bytes)] = '\0';
-                        session.recvBuffer().insert(
-                            session.recvBuffer().end(),
+                        std::vector<char>& recv_buffer = session.recvBuffer();
+
+                        recv_buffer.insert(
+                            recv_buffer.end(),
                             buffer_in.begin(),
                             buffer_in.begin() + num_bytes
                         );
-                        std::cout << "recv[" << client_fd << "]: ";
-                        std::cout.write(buffer_in.data(), static_cast<std::streamsize>(num_bytes));
-                        std::cout << '\n';
+
+                        processPackets(epoll_fd, session);
                     } else if (num_bytes < 0) {
                         if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
                             continue;

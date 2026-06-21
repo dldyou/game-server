@@ -1,17 +1,16 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
-#pragma pack(push, 1)
-struct PacketHeader {
-    uint16_t size;
-    uint16_t type;
-    uint32_t sequence;
-};
-#pragma pack(pop);
+/*
+Wire format, network byte order:
+[total size: u16][type: u16][sequence: u32][payload ...]
 
-enum PacketType {
-    CS2_PING = 1,
+*/
+
+enum PacketType : std::uint16_t {
+    C2S_PING = 1,
     S2C_PONG = 2,
 
     C2S_LOGIN = 100,
@@ -36,3 +35,12 @@ enum PacketType {
 
     S2C_ERROR = 900,
 };
+
+struct Packet {
+    PacketType type;
+    std::uint32_t sequence;
+    std::vector<char> payload;
+};
+
+inline constexpr std::size_t packet_header_size = 8;
+inline constexpr std::size_t max_packet_size = 16 * 1024;
