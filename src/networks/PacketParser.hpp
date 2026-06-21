@@ -12,7 +12,7 @@ enum class ParseStatus {
 
 struct ParseResult {
     ParseStatus status = ParseStatus::Pending;
-    std::size_t consumed_bytes;
+    std::size_t consumed_bytes = 0;
     std::optional<Packet> packet;
 };
 
