@@ -3,6 +3,12 @@
 #include <cstdint>
 #include <vector>
 
+/*
+Wire format, network byte order:
+[total size: u16][type: u16][sequence: u32][payload ...]
+
+*/
+
 enum PacketType : std::uint16_t {
     C2S_PING = 1,
     S2C_PONG = 2,
