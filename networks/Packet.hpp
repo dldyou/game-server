@@ -26,7 +26,7 @@ enum PacketType {
     S2C_ROOM_STATE = 206,
 
     C2S_CHAT = 300,
-    S2C_CHAT = 201,
+    S2C_CHAT = 301,
 
     C2S_MOVE = 400,
     C2S_ATTACK = 401,
