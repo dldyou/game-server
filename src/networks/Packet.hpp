@@ -36,5 +36,5 @@ struct Packet {
     std::vector<char> payload;
 };
 
-inline constexpr std::size_t PacketHeaderSize = 8;
-inline constexpr std::size_t MaxPacketSize = 16 * 1024;
+inline constexpr std::size_t packet_header_size = 8;
+inline constexpr std::size_t max_packet_size = 16 * 1024;
