@@ -11,7 +11,7 @@ struct PacketHeader {
 #pragma pack(pop);
 
 enum PacketType {
-    CS2_PING = 1,
+    C2S_PING = 1,
     S2C_PONG = 2,
 
     C2S_LOGIN = 100,
