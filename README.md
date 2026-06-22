@@ -97,6 +97,21 @@ docker compose up -d --build
 docker compose logs -f
 ```
 
+## Packet Structure
+
+packet 구조는 다음과 같이 정의됩니다.
+
+| **Field** | **Size (bytes)** | **Description** |
+|-----------|-----------------|-----------------|
+| `packet_size` | 2 | 패킷 전체 크기 (헤더 + 페이로드) |
+| `packet_type` | 2 | 패킷 타입 (예: 로그인, 채팅, 이동 등) |
+| `sequence` | 4 | 패킷 순서 번호 (클라이언트와 서버 간 동기화 용도) |
+| `payload` | variable | 실제 데이터 (예: 메시지, 좌표 등) |
+
+패킷의 헤더는 최대 8B이며 패킷의 최대 크기는 16KB로 제한됩니다.
+
+nework packet으로 전송되는 데이터는 앞에 `packet_size`를 붙여서 전송됩니다. `packet_size`는 `packet_type`, `sequence`, `payload`를 포함한 전체 패킷 크기를 나타냅니다.
+
 ## Current Status
 
 - [x] Dockerfile 작성

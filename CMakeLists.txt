@@ -9,6 +9,7 @@ add_executable(game-server
     src/Server.cpp
     src/networks/Session.cpp
     src/networks/PacketParser.cpp
+    src/networks/PacketSerializer.cpp
     src/config/Config.cpp
     src/utils/StringUtils.cpp
 )
