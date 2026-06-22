@@ -11,6 +11,8 @@ C++17 기반 실시간 멀티플레이어 게임 서버 프로젝트입니다.
 - non-blocking socket 통신
 - 클라이언트 세션 관리
 - 패킷 구조 설계 및 파싱
+- 로그인 및 인증 처리
+- 채팅 기능
 - 게임 룸 생성 / 입장 / 퇴장
 - Tick 기반 게임 상태 업데이트
 - Docker 기반 빌드 및 실행 환경 구성
@@ -26,25 +28,29 @@ C++17 기반 실시간 멀티플레이어 게임 서버 프로젝트입니다.
 ## Project Structure
 
 ```bash
-game-server/
-├── config/
-├── networks/
-│   ├── Session.cpp
-│   └── Session.hpp
-├── src/
-│   ├── config/
+game-server/                    # project root
+├── config/                     # config files
+├── src/                        # source files
+│   ├── config/                 # parse config files
 │   │   ├── Config.cpp
 │   │   └── Config.hpp
-│   ├── Server.cpp
+│   ├── networks/
+│   │   ├── Packet.hpp          # Packet Type & Packet
+│   │   ├── PacketParser.cpp    # parse packet
+│   │   ├── PacketParser.hpp
+│   │   ├── Session.cpp
+│   │   └── Session.hpp         # client sessions
+│   ├── Server.cpp              # TCP server
 │   ├── Server.hpp
-│   ├── utils/
-│   │   ├── StringUtils.cpp
+│   ├── utils/                  # util functions
+│   │   ├── StringUtils.cpp     # for string
 │   │   └── StringUtils.hpp
-│   └── main.cpp
+│   └── main.cpp                # main app
 ├── .gitignore
 ├── CMakeLists.txt
 ├── docker-compose.yml
 └── Dockerfile
+
 ```
 
 ## Configuration
@@ -98,7 +104,9 @@ docker compose logs -f
 - [x] 설정 파일 로딩 구조 구현
 - [x] epoll 기반 non-blocking TCP 서버 구현
 - [x] 클라이언트 세션 관리
-- [ ] 패킷 구조 설계 및 파싱
+- [x] 패킷 구조 설계 및 파싱
+- [ ] 로그인 및 인증 처리 구현
+- [ ] 채팅 기능 구현
 - [ ] 게임 룸 시스템 구현
 - [ ] Tick 기반 게임 루프 구현
 - [ ] 유닛 테스트 작성
