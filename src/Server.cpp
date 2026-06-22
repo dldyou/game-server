@@ -101,10 +101,17 @@ bool Server::queuePacket(
     }
 
     const bool enable_write = !session.hasPendingSend();
-    session.enqueueSend(std::move(buffer));
 
-    if (enable_write &&
-        !updateClientEvents(epoll_fd, session.fd(), true)) {
+    if (!session.enqueueSend(
+            std::move(buffer),
+            max_pending_send_bytes
+        )) {
+        std::cerr << "Send queue limit exceeded for session "
+                  << session.fd() << "\n";
+        return false;
+    }
+
+    if (enable_write && !updateClientEvents(epoll_fd, session)) {
         return false;
     }
 
@@ -144,7 +151,11 @@ bool Server::flushSendQueue(int epoll_fd, Session& session) {
         return false;
     }
 
-    return updateClientEvents(epoll_fd, session.fd(), false);
+    if (session.isPeerClosed()) {
+        return true;
+    }
+
+    return updateClientEvents(epoll_fd, session);
 }
 
 void Server::initClients() {
@@ -168,19 +179,27 @@ bool Server::setNonBlocking(int fd) {
 
 bool Server::updateClientEvents(
     int epoll_fd,
-    int client_fd,
-    bool want_write
+    const Session& session
 ) {
     epoll_event event{};
-    event.events = EPOLLIN | EPOLLRDHUP;
+    event.events = EPOLLRDHUP;
 
-    if (want_write) {
+    if (!session.isPeerClosed()) {
+        event.events |= EPOLLIN;
+    }
+
+    if (session.hasPendingSend()) {
         event.events |= EPOLLOUT;
     }
 
-    event.data.fd = client_fd;
+    event.data.fd = session.fd();
 
-    if (epoll_ctl(epoll_fd, EPOLL_CTL_MOD, client_fd, &event) == -1) {
+    if (epoll_ctl(
+            epoll_fd,
+            EPOLL_CTL_MOD,
+            session.fd(),
+            &event
+        ) == -1) {
         perror("epoll_ctl(MOD)");
         return false;
     }
@@ -474,56 +493,83 @@ void Server::run(int server_fd, const ServerConfig& server_config) {
             }
 
             Session& session = session_it->second;
+            bool close_session = false;
 
-            if ((event_flags & (EPOLLERR | EPOLLHUP)) != 0) {
+            if ((event_flags & EPOLLIN) != 0) {
+                while (true) {
+                    const ssize_t num_bytes = recv(
+                        event_fd,
+                        buffer_in.data(),
+                        buffer_in.size(),
+                        0
+                    );
+
+                    if (num_bytes > 0) {
+                        std::vector<char>& recv_buffer =
+                            session.recvBuffer();
+                        recv_buffer.insert(
+                            recv_buffer.end(),
+                            buffer_in.begin(),
+                            buffer_in.begin() + num_bytes
+                        );
+
+                        if (!processPackets(epoll_fd, session)) {
+                            close_session = true;
+                            break;
+                        }
+                        continue;
+                    }
+
+                    if (num_bytes == 0) {
+                        session.markPeerClosed();
+                        break;
+                    }
+
+                    if (errno == EINTR) {
+                        continue;
+                    }
+
+                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                        break;
+                    }
+
+                    close_session = true;
+                    break;
+                }
+            }
+
+            if (close_session) {
                 closeClient(epoll_fd, event_fd);
                 continue;
             }
 
-            bool peer_closed = (event_flags & EPOLLRDHUP) != 0;
-
-            if ((event_flags & EPOLLIN) != 0) {
-                const ssize_t num_bytes = recv(
-                    event_fd,
-                    buffer_in.data(),
-                    buffer_in.size(),
-                    0
-                );
-
-                if (num_bytes > 0) {
-                    std::vector<char>& recv_buffer =
-                        session.recvBuffer();
-                    recv_buffer.insert(
-                        recv_buffer.end(),
-                        buffer_in.begin(),
-                        buffer_in.begin() + num_bytes
-                    );
-
-                    if (!processPackets(epoll_fd, session)) {
-                        closeClient(epoll_fd, event_fd);
-                        continue;
-                    }
-                } else if (num_bytes == 0) {
-                    peer_closed = true;
-                } else if (
-                    errno != EAGAIN &&
-                    errno != EWOULDBLOCK &&
-                    errno != EINTR
-                ) {
-                    closeClient(epoll_fd, event_fd);
-                    continue;
-                }
+            if ((event_flags & (EPOLLHUP | EPOLLRDHUP)) != 0) {
+                session.markPeerClosed();
             }
 
-            if ((event_flags & EPOLLOUT) != 0) {
+            if ((event_flags & EPOLLERR) != 0) {
+                closeClient(epoll_fd, event_fd);
+                continue;
+            }
+
+            if ((event_flags & EPOLLOUT) != 0 ||
+                (session.isPeerClosed() &&
+                 session.hasPendingSend())) {
                 if (!flushSendQueue(epoll_fd, session)) {
                     closeClient(epoll_fd, event_fd);
                     continue;
                 }
             }
 
-            if (peer_closed && !session.hasPendingSend()) {
-                closeClient(epoll_fd, event_fd);
+            if (session.isPeerClosed()) {
+                if (!session.hasPendingSend()) {
+                    closeClient(epoll_fd, event_fd);
+                    continue;
+                }
+
+                if (!updateClientEvents(epoll_fd, session)) {
+                    closeClient(epoll_fd, event_fd);
+                }
             }
         }
     }
