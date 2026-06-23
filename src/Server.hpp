@@ -9,6 +9,8 @@
 #include "config/Config.hpp"
 #include "networks/Packet.hpp"
 #include "networks/Session.hpp"
+#include "users/UserManager.hpp"
+#include "LoginProtocol.hpp"
 
 class Server {
 private:
@@ -18,6 +20,8 @@ private:
     std::atomic<bool> is_running = false;
     int wake_fd = -1;
     std::mutex wake_mutex;
+
+    UserManager user_manager;
 
     void initClients();
     bool setNonBlocking(int fd);
@@ -29,6 +33,17 @@ private:
     bool handlePacket(int epoll_fd, Session& session, const Packet& packet);
     bool queuePacket(int epoll_fd, Session& session, const Packet& packet);
     bool flushSendQueue(int epoll_fd, Session& session);
+
+    bool handleLogin(int epoll_fd, Session& session, const Packet& packet);
+
+    bool sendLoginResult(
+        int epoll_fd,
+        Session& session,
+        std::uint32_t sequence,
+        LoginResponse response
+    );
+
+    bool requiresAuthentication(PacketType type) const;
 
 public:
     int init(const ServerConfig& server_config);
