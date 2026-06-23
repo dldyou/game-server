@@ -46,3 +46,16 @@ void Session::advanceSend(std::size_t byte_count) {
         send_offset = 0;
     }
 }
+
+bool Session::authenticate(AuthenticatedUser user) {
+    if (authenticated_user) {
+        return false;
+    }
+
+    authenticated_user = std::move(user);
+    return true;
+}
+
+void Session::clearAuthentication() {
+    authenticated_user.reset();
+}
