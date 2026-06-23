@@ -10,7 +10,7 @@
 #include "networks/Packet.hpp"
 #include "networks/Session.hpp"
 #include "users/UserManager.hpp"
-#include "LoginProtocol.hpp"
+#include "auth/LoginProtocol.hpp"
 
 class Server {
 private:
