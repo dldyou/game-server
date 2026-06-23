@@ -9,6 +9,8 @@
 #include <sys/eventfd.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include "users/UserManager.hpp"
+#include "LoginProtocol.hpp"
 
 #include <cerrno>
 #include <cstddef>
