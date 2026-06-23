@@ -7,6 +7,11 @@
 Wire format, network byte order:
 [total size: u16][type: u16][sequence: u32][payload ...]
 
+C2S_LOGIN payload
+[id_length:u16][password_length:u16][id][password]
+
+S2C_LOGIN_RESULT payload
+[result:u16][user_id:u64][handle_length:u16][handle]
 */
 
 enum PacketType : std::uint16_t {
@@ -44,3 +49,6 @@ struct Packet {
 
 inline constexpr std::size_t packet_header_size = 8;
 inline constexpr std::size_t max_packet_size = 16 * 1024;
+
+inline constexpr std::size_t max_login_id_length = 32;
+inline constexpr std::size_t max_password_length = 64;
