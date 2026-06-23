@@ -6,18 +6,42 @@ This C++23 Linux game server uses non-blocking sockets, `epoll`, and
 `eventfd`.
 
 ```text
-game-server/
-├── src/
-│   ├── main.cpp
-│   ├── Server.cpp / Server.hpp
-│   ├── config/        # INI configuration loading
-│   └── utils/         # Shared string helpers
-├── networks/
-│   └── Session.cpp / Session.hpp
-├── config/config.ini  # Local runtime configuration
+game-server/                        # project root
+├── config/                         # config files
+├── src/                            # source files
+│   ├── auth/
+│   │   ├── AuthResult.hpp          # Login Result, Authentication
+│   │   ├── LoginProtocol.cpp
+│   │   └── LoginProtocol.hpp       # protocol associated to login
+│   ├── users/
+│   │   ├── User.hpp                # User object
+│   │   ├── UserManager.cpp         # User Manager
+│   │   └── UserManager.hpp
+│   ├── networks/
+│   │   ├── Packet.hpp              # Packet Type & Packet
+│   │   ├── PacketParser.cpp        # packet to content
+│   │   ├── PacketParser.hpp
+│   │   ├── PacketSerializer.cpp    # content to packet
+│   │   ├── PacketSerializer.hpp
+│   │   ├── Session.cpp
+│   │   └── Session.hpp             # client sessions
+│   ├── utils/                      # util functions
+│   │   ├── StringUtils.cpp         # utils for string
+│   │   └── StringUtils.hpp
+│   ├── config/
+│   │   ├── Config.cpp              # parse config files
+│   │   └── Config.hpp
+│   ├── Server.cpp                  # TCP server
+│   ├── Server.hpp
+│   └── main.cpp                    # main app
+├── .dockerignore
+├── .gitignore
 ├── CMakeLists.txt
+├── docker-compose.yml
 ├── Dockerfile
-└── docker-compose.yml
+└── tools/
+    └── TestClient.cpp              # client for test server
+
 ```
 
 Keep networking responsibilities in `Server` and per-client state in
