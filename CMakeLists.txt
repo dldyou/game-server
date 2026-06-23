@@ -15,3 +15,11 @@ add_executable(game-server
 )
 
 target_include_directories(game-server PRIVATE src)
+
+add_executable(test-client
+    tools/TestClient.cpp
+    src/networks/PacketParser.cpp
+    src/networks/PacketSerializer.cpp
+)
+
+target_include_directories(test-client PRIVATE src)
