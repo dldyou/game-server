@@ -12,6 +12,8 @@ add_executable(game-server
     src/networks/PacketSerializer.cpp
     src/config/Config.cpp
     src/utils/StringUtils.cpp
+    src/auth/LoginProtocol.cpp
+    src/users/UserManager.cpp
 )
 
 target_include_directories(game-server PRIVATE src)
