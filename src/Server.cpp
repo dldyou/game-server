@@ -10,7 +10,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include "users/UserManager.hpp"
-#include "LoginProtocol.hpp"
+#include "auth/LoginProtocol.hpp"
 
 #include <cerrno>
 #include <cstddef>
@@ -109,9 +109,7 @@ bool Server::handlePacket(
         return queuePacket(epoll_fd, session, pong);
     }
     case C2S_LOGIN:
-        std::cout << "LOGIN from session " << session.fd()
-            << ", sequence=" << packet.sequence << "\n";
-        return true;
+        return handleLogin(epoll_fd, session, packet);
     case C2S_CREATE_ROOM:
     case C2S_JOIN_ROOM:
     case C2S_LEAVE_ROOM:
