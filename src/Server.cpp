@@ -124,6 +124,7 @@ bool Server::handlePacket(
     case C2S_LOGIN:
         return handleLogin(epoll_fd, session, packet);
     case C2S_CREATE_ROOM:
+        // TODO: need to check authentication before these packets
     case C2S_JOIN_ROOM:
     case C2S_LEAVE_ROOM:
     case C2S_CHAT:
