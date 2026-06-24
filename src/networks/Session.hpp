@@ -21,9 +21,6 @@ private:
     bool peer_closed = false;
 
     std::optional<AuthenticatedUser> authenticated_user;
-    std::uint64_t id = 0;
-    std::string user_id;
-    int room_id = -1;
 
 public:
     explicit Session(int fd);
