@@ -57,6 +57,19 @@ bool Server::handleLogin(
     );
 }
 
+bool Server::sendLoginResult(
+    int epoll_fd,
+    Session& session,
+    std::uint32_t sequence,
+    LoginResponse response
+) {
+    // TODO
+}
+
+bool Server::requiresAuthentication(PacketType type) const {
+    // TODO
+}
+
 bool Server::processPackets(int epoll_fd, Session& session) {
     std::vector<char>& buffer = session.recvBuffer();
     std::size_t consumed_bytes = 0;
