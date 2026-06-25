@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <mutex>
 #include <unordered_map>
 
 #include "User.hpp"
@@ -9,6 +10,7 @@
 
 class UserManager {
 private:
+    std::mutex mutex_;
     std::unordered_map<std::string, User> usersByLoginId;
 
     bool verifyPassword(

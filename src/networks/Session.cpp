@@ -6,10 +6,7 @@ Session::Session(int fd)
     : session_fd(fd) {
 }
 
-bool Session::enqueueSend(
-    std::vector<char> buffer,
-    std::size_t max_pending_bytes
-) {
+bool Session::enqueueSend(std::vector<char> buffer, std::size_t max_pending_bytes) {
     if (buffer.empty()) {
         return true;
     }
