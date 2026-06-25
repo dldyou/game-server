@@ -81,6 +81,9 @@ Preserve fd ownership rules: sockets must be non-blocking, disconnects must
 remove the session and close the fd once, and `eventfd` shutdown state must
 remain synchronized.
 
+Don't use `using namespace` in headers. 
+Avoid linebreak in function declarations when I did not.
+
 ## Testing Guidelines
 
 No automated test framework is configured yet. Every change must at least
