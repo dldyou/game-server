@@ -119,8 +119,7 @@ bool Server::handlePacket(int epoll_fd, Session& session, const Packet& packet) 
     case C2S_ATTACK:
         return true;
     default:
-        std::cerr << "Unknown packet type: "
-            << static_cast<std::uint16_t>(packet.type) << "\n";
+        std::cerr << "Unknown packet type: " << static_cast<std::uint16_t>(packet.type) << "\n";
         return true;
     }
 }
@@ -129,19 +128,14 @@ bool Server::queuePacket(int epoll_fd, Session& session, const Packet& packet) {
     std::vector<char> buffer = PacketSerializer::serialize(packet);
 
     if (buffer.empty()) {
-        std::cerr << "Failed to serialize packet type "
-            << static_cast<std::uint16_t>(packet.type) << "\n";
+        std::cerr << "Failed to serialize packet type " << static_cast<std::uint16_t>(packet.type) << "\n";
         return false;
     }
 
     const bool enable_write = !session.hasPendingSend();
 
-    if (!session.enqueueSend(
-        std::move(buffer),
-        max_pending_send_bytes
-    )) {
-        std::cerr << "Send queue limit exceeded for session "
-            << session.fd() << "\n";
+    if (!session.enqueueSend(std::move(buffer), max_pending_send_bytes)) {
+        std::cerr << "Send queue limit exceeded for session " << session.fd() << "\n";
         return false;
     }
 
@@ -460,10 +454,7 @@ void Server::run(int server_fd, const ServerConfig& server_config) {
                     continue;
                 }
 
-                if (!sessions.emplace(
-                    client_fd,
-                    Session(client_fd)
-                ).second) {
+                if (!sessions.emplace(client_fd, Session(client_fd)).second) {
                     closeClient(epoll_fd, client_fd);
                 }
                 continue;

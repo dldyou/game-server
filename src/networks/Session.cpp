@@ -30,10 +30,8 @@ void Session::advanceSend(std::size_t byte_count) {
         return;
     }
 
-    const std::size_t remaining =
-        send_queue.front().size() - send_offset;
-    const std::size_t advanced =
-        byte_count < remaining ? byte_count : remaining;
+    const std::size_t remaining = send_queue.front().size() - send_offset;
+    const std::size_t advanced = byte_count < remaining ? byte_count : remaining;
 
     send_offset += advanced;
     pending_send_bytes -= advanced;

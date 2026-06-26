@@ -13,10 +13,8 @@ std::vector<char> PacketSerializer::serialize(const Packet& packet) {
         return {};
     }
 
-    const std::uint16_t network_size =
-        htons(static_cast<std::uint16_t>(packet_size));
-    const std::uint16_t network_type =
-        htons(static_cast<std::uint16_t>(packet.type));
+    const std::uint16_t network_size = htons(static_cast<std::uint16_t>(packet_size));
+    const std::uint16_t network_type = htons(static_cast<std::uint16_t>(packet.type));
     const std::uint32_t network_sequence = htonl(packet.sequence);
 
     std::vector<char> buffer(packet_size);
