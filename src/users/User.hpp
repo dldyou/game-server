@@ -7,6 +7,6 @@
 struct User {
     std::uint64_t id;
     std::string handle;
-    std::string loginId;
+    std::string login_id;
     std::string password;
 };

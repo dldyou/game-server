@@ -11,19 +11,13 @@
 class UserManager {
 private:
     std::mutex mutex_;
-    std::unordered_map<std::string, User> usersByLoginId;
+    std::unordered_map<std::string, User> users_by_login_id;
 
-    bool verifyPassword(
-        std::string_view password,
-        std::string_view passwordHash
-    ) const;
+    bool verifyPassword(std::string_view password, std::string_view password_hash) const;
 
 public:
     bool load(const std::string& path);
     bool createUser(User user);
 
-    AuthenticationResult authenticate(
-        std::string_view loginId,
-        std::string_view password
-    ) const;
+    AuthenticationResult authenticate(std::string_view login_id, std::string_view password) const;
 };
