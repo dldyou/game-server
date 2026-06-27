@@ -286,6 +286,12 @@ int Server::init(const ServerConfig& server_config) {
     }
 
     initClients();
+    user_manager.createUser({
+        .id = 1,
+        .handle = "tester",
+        .login_id = "test",
+        .password = "password",
+        });
 
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         perror("socket");
