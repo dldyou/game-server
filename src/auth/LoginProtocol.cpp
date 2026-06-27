@@ -4,15 +4,15 @@
 bool LoginProtocol::readU16(std::span<const char> payload, std::size_t offset, std::uint16_t& value) {
     if (offset + 2 > payload.size()) {
         return false;
-
-        const auto high = static_cast<unsigned char>(payload[offset]);
-        const auto low = static_cast<unsigned char>(payload[offset + 1]);
-
-        value = static_cast<std::uint16_t>(
-            static_cast<std::uint16_t>(high) << 8 | static_cast<std::uint16_t>(low));
-
-        return true;
     }
+
+    const auto high = static_cast<unsigned char>(payload[offset]);
+    const auto low = static_cast<unsigned char>(payload[offset + 1]);
+
+    value = static_cast<std::uint16_t>(
+        static_cast<std::uint16_t>(high) << 8 | static_cast<std::uint16_t>(low));
+
+    return true;
 }
 
 void LoginProtocol::appendU16(std::vector<char>& output, std::uint16_t value) {
