@@ -54,11 +54,27 @@ bool Server::handleLogin(int epoll_fd, Session& session, const Packet& packet) {
 }
 
 bool Server::sendLoginResult(int epoll_fd, Session& session, std::uint32_t sequence, LoginResponse response) {
-    // TODO
+    Packet packet{
+        .type = S2C_LOGIN_RESULT,
+        .sequence = sequence,
+        .payload = LoginProtocol::encodeResponse(response),
+    };
+
+    return queuePacket(epoll_fd, session, packet);
 }
 
 bool Server::requiresAuthentication(PacketType type) const {
-    // TODO
+    switch (type) {
+    case C2S_CREATE_ROOM:
+    case C2S_JOIN_ROOM:
+    case C2S_LEAVE_ROOM:
+    case C2S_CHAT:
+    case C2S_MOVE:
+    case C2S_ATTACK:
+        return true;
+    default:
+        return false;
+    }
 }
 
 bool Server::processPackets(int epoll_fd, Session& session) {
@@ -99,6 +115,11 @@ bool Server::processPackets(int epoll_fd, Session& session) {
 }
 
 bool Server::handlePacket(int epoll_fd, Session& session, const Packet& packet) {
+    if (requiresAuthentication(packet.type) && !session.isAuthenticated()) {
+        std::cerr << "Unauthenticated packet: " << static_cast<std::uint16_t>(packet.type) << "\n";
+        return true;
+    }
+
     switch (packet.type) {
     case C2S_PING: {
         Packet pong{
