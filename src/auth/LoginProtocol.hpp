@@ -8,7 +8,7 @@
 #include "AuthResult.hpp"
 
 struct LoginRequest {
-    std::string loginId;
+    std::string login_id;
     std::string password;
 };
 
