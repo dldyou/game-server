@@ -13,7 +13,7 @@ enum class LoginResult : std::uint16_t {
 };
 
 struct AuthenticatedUser {
-    std::uint64_t userId;
+    std::uint64_t user_id;
     std::string handle;
 };
 
