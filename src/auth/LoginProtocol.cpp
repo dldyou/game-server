@@ -1,5 +1,5 @@
 #include "LoginProtocol.hpp"
-#include "Packet.hpp"
+#include "networks/Packet.hpp"
 
 bool LoginProtocol::readU16(std::span<const char> payload, std::size_t offset, std::uint16_t& value) {
     if (offset + 2 > payload.size()) {
