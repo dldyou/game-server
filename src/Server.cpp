@@ -37,7 +37,7 @@ bool Server::handleLogin(int epoll_fd, Session& session, const Packet& packet) {
     }
 
     AuthenticationResult result = user_manager.authenticate(
-        request->loginId,
+        request->login_id,
         request->password
     );
 
