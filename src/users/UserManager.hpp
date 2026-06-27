@@ -10,7 +10,7 @@
 
 class UserManager {
 private:
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     std::unordered_map<std::string, User> users_by_login_id;
 
     bool verifyPassword(std::string_view password, std::string_view password_hash) const;
