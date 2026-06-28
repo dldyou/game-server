@@ -12,6 +12,24 @@ C2S_LOGIN payload
 
 S2C_LOGIN_RESULT payload
 [result:u16][user_id:u64][handle_length:u16][handle]
+
+C2S_CREATE_ROOM
+[name_length:u16][max_players:u16][name]
+
+S2C_ROOM_CREATED
+[result:u16][room_id:u32]
+
+C2S_JOIN_ROOM
+[room_id:u32]
+
+S2C_ROOM_JOINED
+[result:u16][room_id:u32]
+
+C2S_LEAVE_ROOM
+empty
+
+S2C_ROOM_LEFT
+[result:u16][room_id:u32]
 */
 
 enum PacketType : std::uint16_t {
