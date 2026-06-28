@@ -54,3 +54,21 @@ bool Session::authenticate(AuthenticatedUser user) {
 void Session::clearAuthentication() {
     authenticated_user.reset();
 }
+
+bool Session::isInRoom() const
+{
+    return false;
+}
+
+void Session::enterRoom(std::uint32_t room_id)
+{
+}
+
+void Session::leaveRoom()
+{
+}
+
+std::optional<std::uint32_t> Session::currentRoomId() const
+{
+    return std::optional<std::uint32_t>();
+}

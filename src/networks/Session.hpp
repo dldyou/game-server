@@ -21,6 +21,7 @@ private:
     bool peer_closed = false;
 
     std::optional<AuthenticatedUser> authenticated_user;
+    std::optional<std::uint32_t> room_id;
 
 public:
     explicit Session(int fd);
@@ -54,4 +55,10 @@ public:
 
     bool authenticate(AuthenticatedUser user);
     void clearAuthentication();
+
+    // Room
+    bool isInRoom() const;
+    void enterRoom(std::uint32_t room_id);
+    void leaveRoom();
+    std::optional<std::uint32_t> currentRoomId() const;
 };
