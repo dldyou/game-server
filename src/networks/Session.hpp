@@ -5,6 +5,9 @@
 #include <deque>
 #include <string>
 #include <vector>
+#include <optional>
+
+#include "auth/AuthResult.hpp"
 
 class Session {
 private:
@@ -17,9 +20,7 @@ private:
     bool closing = false;
     bool peer_closed = false;
 
-    std::uint64_t id = 0;
-    std::string user_id;
-    int room_id = -1;
+    std::optional<AuthenticatedUser> authenticated_user;
 
 public:
     explicit Session(int fd);
@@ -41,4 +42,16 @@ public:
 
     void markPeerClosed() { peer_closed = true; }
     bool isPeerClosed() const { return peer_closed; }
+
+    // Authentication
+    bool isAuthenticated() const {
+        return authenticated_user.has_value();
+    }
+
+    const AuthenticatedUser* authenticatedUser() const {
+        return authenticated_user ? &authenticated_user.value() : nullptr;
+    }
+
+    bool authenticate(AuthenticatedUser user);
+    void clearAuthentication();
 };

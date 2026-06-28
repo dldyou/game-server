@@ -1,6 +1,6 @@
 # C++ Real-time Multiplayer Game Server
 
-C++17 기반 실시간 멀티플레이어 게임 서버 프로젝트입니다.
+C++ 기반 실시간 멀티플레이어 게임 서버 프로젝트입니다.
 
 현재는 Docker, CMake, 설정 파일 로딩 구조를 구성하고 있으며, 이후 `epoll` 기반 non-blocking TCP 서버, 세션 관리, 패킷 처리, 게임룸 시스템, Tick 기반 게임 루프 등을 구현할 예정입니다.
 
@@ -19,7 +19,7 @@ C++17 기반 실시간 멀티플레이어 게임 서버 프로젝트입니다.
 
 ## Tech Stack
 
-- Language: C++17
+- Language: C++23
 - Build: CMake
 - Network: POSIX Socket, epoll
 - Platform: Ubuntu 24.04
@@ -28,28 +28,41 @@ C++17 기반 실시간 멀티플레이어 게임 서버 프로젝트입니다.
 ## Project Structure
 
 ```bash
-game-server/                    # project root
-├── config/                     # config files
-├── src/                        # source files
-│   ├── config/                 # parse config files
-│   │   ├── Config.cpp
-│   │   └── Config.hpp
+game-server/                        # project root
+├── config/                         # config files
+├── src/                            # source files
+│   ├── auth/
+│   │   ├── AuthResult.hpp          # Login Result, Authentication
+│   │   ├── LoginProtocol.cpp
+│   │   └── LoginProtocol.hpp       # protocol associated to login
+│   ├── users/
+│   │   ├── User.hpp                # User object
+│   │   ├── UserManager.cpp         # User Manager
+│   │   └── UserManager.hpp
 │   ├── networks/
-│   │   ├── Packet.hpp          # Packet Type & Packet
-│   │   ├── PacketParser.cpp    # parse packet
+│   │   ├── Packet.hpp              # Packet Type & Packet
+│   │   ├── PacketParser.cpp        # packet to content
 │   │   ├── PacketParser.hpp
+│   │   ├── PacketSerializer.cpp    # content to packet
+│   │   ├── PacketSerializer.hpp
 │   │   ├── Session.cpp
-│   │   └── Session.hpp         # client sessions
-│   ├── Server.cpp              # TCP server
-│   ├── Server.hpp
-│   ├── utils/                  # util functions
-│   │   ├── StringUtils.cpp     # for string
+│   │   └── Session.hpp             # client sessions
+│   ├── utils/                      # util functions
+│   │   ├── StringUtils.cpp         # utils for string
 │   │   └── StringUtils.hpp
-│   └── main.cpp                # main app
+│   ├── config/
+│   │   ├── Config.cpp              # parse config files
+│   │   └── Config.hpp
+│   ├── Server.cpp                  # TCP server
+│   ├── Server.hpp
+│   └── main.cpp                    # main app
+├── .dockerignore
 ├── .gitignore
 ├── CMakeLists.txt
 ├── docker-compose.yml
-└── Dockerfile
+├── Dockerfile
+└── tools/
+    └── TestClient.cpp              # client for test server
 
 ```
 

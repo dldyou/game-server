@@ -9,6 +9,8 @@
 #include <sys/eventfd.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include "users/UserManager.hpp"
+#include "auth/LoginProtocol.hpp"
 
 #include <cerrno>
 #include <cstddef>
@@ -17,6 +19,63 @@
 #include <iostream>
 #include <span>
 #include <utility>
+
+bool Server::handleLogin(int epoll_fd, Session& session, const Packet& packet) {
+    if (session.isAuthenticated()) {
+        return sendLoginResult(
+            epoll_fd, session, packet.sequence,
+            { LoginResult::AlreadyAuthenticated, std::nullopt }
+        );
+    }
+
+    auto request = LoginProtocol::decodeRequest(packet.payload);
+    if (!request) {
+        return sendLoginResult(
+            epoll_fd, session, packet.sequence,
+            { LoginResult::MalformedPayload, std::nullopt }
+        );
+    }
+
+    AuthenticationResult result = user_manager.authenticate(
+        request->login_id,
+        request->password
+    );
+
+    if (result.result == LoginResult::Success && result.user) {
+        session.authenticate(*result.user);
+    }
+
+    return sendLoginResult(
+        epoll_fd,
+        session,
+        packet.sequence,
+        { result.result, result.user }
+    );
+}
+
+bool Server::sendLoginResult(int epoll_fd, Session& session, std::uint32_t sequence, LoginResponse response) {
+    Packet packet{
+        .type = S2C_LOGIN_RESULT,
+        .sequence = sequence,
+        .payload = LoginProtocol::encodeResponse(response),
+    };
+
+    return queuePacket(epoll_fd, session, packet);
+}
+
+bool Server::requiresAuthentication(PacketType type) const {
+    switch (type) {
+    case C2S_CREATE_ROOM:
+    case C2S_JOIN_ROOM:
+    case C2S_LEAVE_ROOM:
+    case C2S_CHAT:
+    case C2S_MOVE:
+    case C2S_ATTACK:
+        return true;
+    default:
+        return false;
+    }
+}
 
 bool Server::processPackets(int epoll_fd, Session& session) {
     std::vector<char>& buffer = session.recvBuffer();
@@ -55,11 +114,12 @@ bool Server::processPackets(int epoll_fd, Session& session) {
     return true;
 }
 
-bool Server::handlePacket(
-    int epoll_fd,
-    Session& session,
-    const Packet& packet
-) {
+bool Server::handlePacket(int epoll_fd, Session& session, const Packet& packet) {
+    if (requiresAuthentication(packet.type) && !session.isAuthenticated()) {
+        std::cerr << "Unauthenticated packet: " << static_cast<std::uint16_t>(packet.type) << "\n";
+        return true;
+    }
+
     switch (packet.type) {
     case C2S_PING: {
         Packet pong{
@@ -70,10 +130,9 @@ bool Server::handlePacket(
         return queuePacket(epoll_fd, session, pong);
     }
     case C2S_LOGIN:
-        std::cout << "LOGIN from session " << session.fd()
-                  << ", sequence=" << packet.sequence << "\n";
-        return true;
+        return handleLogin(epoll_fd, session, packet);
     case C2S_CREATE_ROOM:
+        // TODO: need to check authentication before these packets
     case C2S_JOIN_ROOM:
     case C2S_LEAVE_ROOM:
     case C2S_CHAT:
@@ -81,33 +140,23 @@ bool Server::handlePacket(
     case C2S_ATTACK:
         return true;
     default:
-        std::cerr << "Unknown packet type: "
-                  << static_cast<std::uint16_t>(packet.type) << "\n";
+        std::cerr << "Unknown packet type: " << static_cast<std::uint16_t>(packet.type) << "\n";
         return true;
     }
 }
 
-bool Server::queuePacket(
-    int epoll_fd,
-    Session& session,
-    const Packet& packet
-) {
+bool Server::queuePacket(int epoll_fd, Session& session, const Packet& packet) {
     std::vector<char> buffer = PacketSerializer::serialize(packet);
 
     if (buffer.empty()) {
-        std::cerr << "Failed to serialize packet type "
-                  << static_cast<std::uint16_t>(packet.type) << "\n";
+        std::cerr << "Failed to serialize packet type " << static_cast<std::uint16_t>(packet.type) << "\n";
         return false;
     }
 
     const bool enable_write = !session.hasPendingSend();
 
-    if (!session.enqueueSend(
-            std::move(buffer),
-            max_pending_send_bytes
-        )) {
-        std::cerr << "Send queue limit exceeded for session "
-                  << session.fd() << "\n";
+    if (!session.enqueueSend(std::move(buffer), max_pending_send_bytes)) {
+        std::cerr << "Send queue limit exceeded for session " << session.fd() << "\n";
         return false;
     }
 
@@ -177,10 +226,7 @@ bool Server::setNonBlocking(int fd) {
     return true;
 }
 
-bool Server::updateClientEvents(
-    int epoll_fd,
-    const Session& session
-) {
+bool Server::updateClientEvents(int epoll_fd, const Session& session) {
     epoll_event event{};
     event.events = EPOLLRDHUP;
 
@@ -194,12 +240,7 @@ bool Server::updateClientEvents(
 
     event.data.fd = session.fd();
 
-    if (epoll_ctl(
-            epoll_fd,
-            EPOLL_CTL_MOD,
-            session.fd(),
-            &event
-        ) == -1) {
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_MOD, session.fd(), &event) == -1) {
         perror("epoll_ctl(MOD)");
         return false;
     }
@@ -235,18 +276,22 @@ int Server::init(const ServerConfig& server_config) {
     sockaddr_in server_addr{};
 
     if (server_config.max_clients <= 0) {
-        std::cerr << "Invalid max_clients value: "
-                  << server_config.max_clients << "\n";
+        std::cerr << "Invalid max_clients value: " << server_config.max_clients << "\n";
         return -1;
     }
 
     if (server_config.buffer_size < 2) {
-        std::cerr << "Invalid buffer_size value: "
-                  << server_config.buffer_size << "\n";
+        std::cerr << "Invalid buffer_size value: " << server_config.buffer_size << "\n";
         return -1;
     }
 
     initClients();
+    user_manager.createUser({
+        .id = 1,
+        .handle = "tester",
+        .login_id = "test",
+        .password = "password",
+        });
 
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         perror("socket");
@@ -254,13 +299,7 @@ int Server::init(const ServerConfig& server_config) {
     }
 
     int opt = 1;
-    if (setsockopt(
-            server_fd,
-            SOL_SOCKET,
-            SO_REUSEADDR,
-            &opt,
-            sizeof(opt)
-        ) == -1) {
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
         perror("setsockopt");
         close(server_fd);
         return -1;
@@ -269,15 +308,10 @@ int Server::init(const ServerConfig& server_config) {
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(server_config.port);
 
-    const int result = inet_pton(
-        AF_INET,
-        server_config.host.c_str(),
-        &server_addr.sin_addr
-    );
+    const int result = inet_pton(AF_INET, server_config.host.c_str(), &server_addr.sin_addr);
 
     if (result == 0) {
-        std::cerr << "Invalid IPv4 address: "
-                  << server_config.host << "\n";
+        std::cerr << "Invalid IPv4 address: " << server_config.host << "\n";
         close(server_fd);
         return -1;
     }
@@ -288,11 +322,7 @@ int Server::init(const ServerConfig& server_config) {
         return -1;
     }
 
-    if (bind(
-            server_fd,
-            reinterpret_cast<sockaddr*>(&server_addr),
-            sizeof(server_addr)
-        ) == -1) {
+    if (bind(server_fd, reinterpret_cast<sockaddr*>(&server_addr), sizeof(server_addr)) == -1) {
         perror("bind");
         close(server_fd);
         return -1;
@@ -315,8 +345,7 @@ int Server::init(const ServerConfig& server_config) {
 void Server::run(int server_fd, const ServerConfig& server_config) {
     const int max_clients = server_config.max_clients;
     const int max_events = max_clients + 2;
-    const std::size_t max_sessions =
-        static_cast<std::size_t>(max_clients);
+    const std::size_t max_sessions = static_cast<std::size_t>(max_clients);
     const std::size_t buffer_size = server_config.buffer_size;
 
     if (server_fd < 0 || max_clients <= 0 || buffer_size < 2) {
@@ -330,9 +359,7 @@ void Server::run(int server_fd, const ServerConfig& server_config) {
     int epoll_fd = -1;
     int event_count = 0;
     int local_wake_fd = -1;
-    std::vector<epoll_event> events(
-        static_cast<std::size_t>(max_events)
-    );
+    std::vector<epoll_event> events(static_cast<std::size_t>(max_events));
 
     socklen_t sockaddr_len = sizeof(sockaddr_in);
 
@@ -347,12 +374,7 @@ void Server::run(int server_fd, const ServerConfig& server_config) {
     event.events = EPOLLIN;
     event.data.fd = server_fd;
 
-    if (epoll_ctl(
-            epoll_fd,
-            EPOLL_CTL_ADD,
-            server_fd,
-            &event
-        ) == -1) {
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, server_fd, &event) == -1) {
         perror("epoll_ctl(ADD server)");
         close(epoll_fd);
         close(server_fd);
@@ -378,12 +400,7 @@ void Server::run(int server_fd, const ServerConfig& server_config) {
     event.events = EPOLLIN;
     event.data.fd = local_wake_fd;
 
-    if (epoll_ctl(
-            epoll_fd,
-            EPOLL_CTL_ADD,
-            local_wake_fd,
-            &event
-        ) == -1) {
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, local_wake_fd, &event) == -1) {
         perror("epoll_ctl(ADD wake)");
         {
             std::lock_guard<std::mutex> lock(wake_mutex);
@@ -400,12 +417,7 @@ void Server::run(int server_fd, const ServerConfig& server_config) {
     }
 
     while (is_running) {
-        event_count = epoll_wait(
-            epoll_fd,
-            events.data(),
-            max_events,
-            -1
-        );
+        event_count = epoll_wait(epoll_fd, events.data(), max_events, -1);
 
         if (event_count == -1) {
             if (errno == EINTR) {
@@ -437,11 +449,7 @@ void Server::run(int server_fd, const ServerConfig& server_config) {
                 sockaddr_in client_addr{};
 
                 sockaddr_len = sizeof(client_addr);
-                client_fd = accept(
-                    server_fd,
-                    reinterpret_cast<sockaddr*>(&client_addr),
-                    &sockaddr_len
-                );
+                client_fd = accept(server_fd, reinterpret_cast<sockaddr*>(&client_addr), &sockaddr_len);
 
                 if (client_fd == -1) {
                     if (errno == EAGAIN ||
@@ -467,21 +475,13 @@ void Server::run(int server_fd, const ServerConfig& server_config) {
                 event.events = EPOLLIN | EPOLLRDHUP;
                 event.data.fd = client_fd;
 
-                if (epoll_ctl(
-                        epoll_fd,
-                        EPOLL_CTL_ADD,
-                        client_fd,
-                        &event
-                    ) == -1) {
+                if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &event) == -1) {
                     perror("epoll_ctl(ADD client)");
                     closeClient(-1, client_fd);
                     continue;
                 }
 
-                if (!sessions.emplace(
-                        client_fd,
-                        Session(client_fd)
-                    ).second) {
+                if (!sessions.emplace(client_fd, Session(client_fd)).second) {
                     closeClient(epoll_fd, client_fd);
                 }
                 continue;
@@ -497,21 +497,11 @@ void Server::run(int server_fd, const ServerConfig& server_config) {
 
             if ((event_flags & EPOLLIN) != 0) {
                 while (true) {
-                    const ssize_t num_bytes = recv(
-                        event_fd,
-                        buffer_in.data(),
-                        buffer_in.size(),
-                        0
-                    );
+                    const ssize_t num_bytes = recv(event_fd, buffer_in.data(), buffer_in.size(), 0);
 
                     if (num_bytes > 0) {
-                        std::vector<char>& recv_buffer =
-                            session.recvBuffer();
-                        recv_buffer.insert(
-                            recv_buffer.end(),
-                            buffer_in.begin(),
-                            buffer_in.begin() + num_bytes
-                        );
+                        std::vector<char>& recv_buffer = session.recvBuffer();
+                        recv_buffer.insert(recv_buffer.end(), buffer_in.begin(), buffer_in.begin() + num_bytes);
 
                         if (!processPackets(epoll_fd, session)) {
                             close_session = true;
@@ -552,9 +542,7 @@ void Server::run(int server_fd, const ServerConfig& server_config) {
                 continue;
             }
 
-            if ((event_flags & EPOLLOUT) != 0 ||
-                (session.isPeerClosed() &&
-                 session.hasPendingSend())) {
+            if ((event_flags & EPOLLOUT) != 0 || (session.isPeerClosed() && session.hasPendingSend())) {
                 if (!flushSendQueue(epoll_fd, session)) {
                     closeClient(epoll_fd, event_fd);
                     continue;

@@ -6,10 +6,7 @@ Session::Session(int fd)
     : session_fd(fd) {
 }
 
-bool Session::enqueueSend(
-    std::vector<char> buffer,
-    std::size_t max_pending_bytes
-) {
+bool Session::enqueueSend(std::vector<char> buffer, std::size_t max_pending_bytes) {
     if (buffer.empty()) {
         return true;
     }
@@ -33,10 +30,8 @@ void Session::advanceSend(std::size_t byte_count) {
         return;
     }
 
-    const std::size_t remaining =
-        send_queue.front().size() - send_offset;
-    const std::size_t advanced =
-        byte_count < remaining ? byte_count : remaining;
+    const std::size_t remaining = send_queue.front().size() - send_offset;
+    const std::size_t advanced = byte_count < remaining ? byte_count : remaining;
 
     send_offset += advanced;
     pending_send_bytes -= advanced;
@@ -45,4 +40,17 @@ void Session::advanceSend(std::size_t byte_count) {
         send_queue.pop_front();
         send_offset = 0;
     }
+}
+
+bool Session::authenticate(AuthenticatedUser user) {
+    if (authenticated_user) {
+        return false;
+    }
+
+    authenticated_user = std::move(user);
+    return true;
+}
+
+void Session::clearAuthentication() {
+    authenticated_user.reset();
 }
