@@ -23,6 +23,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <chrono>
 #include <vector>
 
 namespace {
@@ -379,6 +380,7 @@ void printHelp() {
         "  login <id> <password>   send C2S_LOGIN\n"
         "  chat <message>          send C2S_CHAT\n"
         "  send <type> [payload]   send an arbitrary packet type\n"
+        "  wait [ms]               pause before the next command\n"
         "  help                    show commands\n"
         "  quit                    disconnect"
     );
@@ -453,6 +455,23 @@ int main(int argc, char* argv[]) {
 
         if (command == "help") {
             printHelp();
+            continue;
+        }
+
+        if (command == "wait") {
+            std::uint32_t milliseconds = 500;
+            std::string value;
+            input >> value;
+
+            if (!value.empty() &&
+                !parseUnsigned(value, 60000, milliseconds)) {
+                printLine("[error] usage: wait [ms]");
+                continue;
+            }
+
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(milliseconds)
+            );
             continue;
         }
 
