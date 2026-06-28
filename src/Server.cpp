@@ -53,6 +53,21 @@ bool Server::handleLogin(int epoll_fd, Session& session, const Packet& packet) {
     );
 }
 
+bool Server::handleCreateRoom(int epoll_fd, Session & session, const Packet & packet)
+{
+    return false;
+}
+
+bool Server::handleJoinRoom(int epoll_fd, Session & session, const Packet & packet)
+{
+    return false;
+}
+
+bool Server::handleLeaveRoom(int epoll_fd, Session & session, const Packet & packet)
+{
+    return false;
+}
+
 bool Server::sendLoginResult(int epoll_fd, Session& session, std::uint32_t sequence, LoginResponse response) {
     Packet packet{
         .type = S2C_LOGIN_RESULT,
@@ -132,9 +147,11 @@ bool Server::handlePacket(int epoll_fd, Session& session, const Packet& packet) 
     case C2S_LOGIN:
         return handleLogin(epoll_fd, session, packet);
     case C2S_CREATE_ROOM:
-        // TODO: need to check authentication before these packets
+        return handleCreateRoom(epoll_fd, session, packet);
     case C2S_JOIN_ROOM:
+        return handleJoinRoom(epoll_fd, session, packet);
     case C2S_LEAVE_ROOM:
+        return handleLeaveRoom(epoll_fd, session, packet);
     case C2S_CHAT:
     case C2S_MOVE:
     case C2S_ATTACK:
