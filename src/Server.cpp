@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include "users/UserManager.hpp"
 #include "auth/LoginProtocol.hpp"
+#include "rooms/RoomProtocol.hpp"
 
 #include <cerrno>
 #include <cstddef>
@@ -53,19 +54,63 @@ bool Server::handleLogin(int epoll_fd, Session& session, const Packet& packet) {
     );
 }
 
-bool Server::handleCreateRoom(int epoll_fd, Session & session, const Packet & packet)
-{
-    return false;
+bool Server::handleCreateRoom(int epoll_fd, Session& session, const Packet& packet) {
+    const AuthenticatedUser* user = session.authenticatedUser();
+    if (user == nullptr) {
+        return sendRoomResult(epoll_fd, session, packet.sequence, S2C_ROOM_CREATED, RoomResult::NotAuthenticated, 0);
+    }
+
+    auto request = RoomProtocol::decodeCreateRoom(packet.payload);
+    if (!request) {
+        return sendRoomResult(epoll_fd, session, packet.sequence, S2C_ROOM_CREATED, RoomResult::InvalidPayload, 0);
+    }
+
+    RoomOperationResult result = room_manager.createRoom(*user, session.fd(), *request);
+    const std::uint32_t room_id = result.room_id.value_or(0);
+    if (result.result == RoomResult::Success) {
+        session.enterRoom(room_id);
+    }
+
+    return sendRoomResult(epoll_fd, session, packet.sequence, S2C_ROOM_CREATED, result.result, room_id);
 }
 
-bool Server::handleJoinRoom(int epoll_fd, Session & session, const Packet & packet)
-{
-    return false;
+bool Server::handleJoinRoom(int epoll_fd, Session& session, const Packet& packet) {
+    const AuthenticatedUser* user = session.authenticatedUser();
+    if (user == nullptr) {
+        return sendRoomResult(epoll_fd, session, packet.sequence, S2C_ROOM_JOINED, RoomResult::NotAuthenticated, 0);
+    }
+
+    auto room_id = RoomProtocol::decodeJoinRoom(packet.payload);
+    if (!room_id) {
+        return sendRoomResult(epoll_fd, session, packet.sequence, S2C_ROOM_JOINED, RoomResult::InvalidPayload, 0);
+    }
+
+    RoomOperationResult result = room_manager.joinRoom(*user, session.fd(), *room_id);
+    const std::uint32_t result_room_id = result.room_id.value_or(0);
+    if (result.result == RoomResult::Success) {
+        session.enterRoom(result_room_id);
+    }
+
+    return sendRoomResult(epoll_fd, session, packet.sequence, S2C_ROOM_JOINED, result.result, result_room_id);
 }
 
-bool Server::handleLeaveRoom(int epoll_fd, Session & session, const Packet & packet)
-{
-    return false;
+bool Server::handleLeaveRoom(int epoll_fd, Session& session, const Packet& packet) {
+    const AuthenticatedUser* user = session.authenticatedUser();
+    if (user == nullptr) {
+        return sendRoomResult(epoll_fd, session, packet.sequence, S2C_ROOM_LEFT, RoomResult::NotAuthenticated, 0);
+    }
+
+    if (!packet.payload.empty()) {
+        return sendRoomResult(epoll_fd, session, packet.sequence, S2C_ROOM_LEFT, RoomResult::InvalidPayload, 0);
+    }
+
+    RoomOperationResult result = room_manager.leaveRoom(user->user_id);
+    const std::uint32_t room_id = result.room_id.value_or(0);
+    if (result.result == RoomResult::Success) {
+        session.leaveRoom();
+    }
+
+    return sendRoomResult(epoll_fd, session, packet.sequence, S2C_ROOM_LEFT, result.result, room_id);
 }
 
 bool Server::sendLoginResult(int epoll_fd, Session& session, std::uint32_t sequence, LoginResponse response) {
@@ -73,6 +118,16 @@ bool Server::sendLoginResult(int epoll_fd, Session& session, std::uint32_t seque
         .type = S2C_LOGIN_RESULT,
         .sequence = sequence,
         .payload = LoginProtocol::encodeResponse(response),
+    };
+
+    return queuePacket(epoll_fd, session, packet);
+}
+
+bool Server::sendRoomResult(int epoll_fd, Session& session, std::uint32_t sequence, PacketType type, RoomResult result, std::uint32_t room_id) {
+    Packet packet{
+        .type = type,
+        .sequence = sequence,
+        .payload = RoomProtocol::encodeRoomResult(result, room_id),
     };
 
     return queuePacket(epoll_fd, session, packet);
@@ -277,12 +332,22 @@ void Server::closeClient(int epoll_fd, int client_fd) {
         }
     }
 
+    auto session_it = sessions.find(client_fd);
+    if (session_it != sessions.end()) {
+        if (const AuthenticatedUser* user = session_it->second.authenticatedUser()) {
+            room_manager.removeSession(user->user_id);
+        }
+    }
+
     sessions.erase(client_fd);
     close(client_fd);
 }
 
 void Server::cleanupClients() {
     for (const auto& item : sessions) {
+        if (const AuthenticatedUser* user = item.second.authenticatedUser()) {
+            room_manager.removeSession(user->user_id);
+        }
         close(item.first);
     }
     sessions.clear();

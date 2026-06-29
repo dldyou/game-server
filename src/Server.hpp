@@ -11,6 +11,7 @@
 #include "networks/Session.hpp"
 #include "users/UserManager.hpp"
 #include "auth/LoginProtocol.hpp"
+#include "rooms/RoomManager.hpp"
 
 class Server {
 private:
@@ -22,6 +23,7 @@ private:
     std::mutex wake_mutex;
 
     UserManager user_manager;
+    RoomManager room_manager;
 
     void initClients();
     bool setNonBlocking(int fd);
@@ -45,6 +47,7 @@ private:
         std::uint32_t sequence,
         LoginResponse response
     );
+    bool sendRoomResult(int epoll_fd, Session& session, std::uint32_t sequence, PacketType type, RoomResult result, std::uint32_t room_id);
 
     bool requiresAuthentication(PacketType type) const;
 
