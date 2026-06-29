@@ -55,20 +55,18 @@ void Session::clearAuthentication() {
     authenticated_user.reset();
 }
 
-bool Session::isInRoom() const
-{
-    return false;
+bool Session::isInRoom() const {
+    return room_id.has_value();
 }
 
-void Session::enterRoom(std::uint32_t room_id)
-{
+void Session::enterRoom(std::uint32_t room_id) {
+    this->room_id = room_id;
 }
 
-void Session::leaveRoom()
-{
+void Session::leaveRoom() {
+    room_id.reset();
 }
 
-std::optional<std::uint32_t> Session::currentRoomId() const
-{
-    return std::optional<std::uint32_t>();
+std::optional<std::uint32_t> Session::currentRoomId() const {
+    return room_id;
 }
