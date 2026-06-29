@@ -127,6 +127,13 @@ void appendU16(std::vector<char>& buffer, std::uint16_t value) {
     buffer.insert(buffer.end(), bytes, bytes + sizeof(network_value));
 }
 
+void appendU32(std::vector<char>& buffer, std::uint32_t value) {
+    const std::uint32_t network_value = htonl(value);
+    const auto* bytes =
+        reinterpret_cast<const char*>(&network_value);
+    buffer.insert(buffer.end(), bytes, bytes + sizeof(network_value));
+}
+
 std::vector<char> makeLoginPayload(
     const std::string& id,
     const std::string& password
@@ -144,6 +151,30 @@ std::vector<char> makeLoginPayload(
     appendU16(payload, static_cast<std::uint16_t>(password.size()));
     payload.insert(payload.end(), id.begin(), id.end());
     payload.insert(payload.end(), password.begin(), password.end());
+    return payload;
+}
+
+std::vector<char> makeCreateRoomPayload(const std::string& name, std::uint16_t max_players) {
+    if (name.empty() || name.size() > 64 || max_players == 0 || max_players > 64) {
+        return {};
+    }
+
+    std::vector<char> payload;
+    payload.reserve(4 + name.size());
+    appendU16(payload, static_cast<std::uint16_t>(name.size()));
+    appendU16(payload, max_players);
+    payload.insert(payload.end(), name.begin(), name.end());
+    return payload;
+}
+
+std::vector<char> makeJoinRoomPayload(std::uint32_t room_id) {
+    if (room_id == 0) {
+        return {};
+    }
+
+    std::vector<char> payload;
+    payload.reserve(sizeof(std::uint32_t));
+    appendU32(payload, room_id);
     return payload;
 }
 
@@ -244,6 +275,26 @@ bool readU64(
     return true;
 }
 
+bool readU32(
+    std::span<const char> payload,
+    std::size_t offset,
+    std::uint32_t& value
+) {
+    if (offset > payload.size() ||
+        payload.size() - offset < sizeof(std::uint32_t)) {
+        return false;
+    }
+
+    std::uint32_t network_value = 0;
+    std::memcpy(
+        &network_value,
+        payload.data() + offset,
+        sizeof(network_value)
+    );
+    value = ntohl(network_value);
+    return true;
+}
+
 std::string loginResultName(std::uint16_t result) {
     switch (result) {
     case 0: return "Success";
@@ -251,6 +302,20 @@ std::string loginResultName(std::uint16_t result) {
     case 2: return "InvalidCredentials";
     case 3: return "AlreadyAuthenticated";
     case 4: return "InternalError";
+    default: return "Unknown";
+    }
+}
+
+std::string roomResultName(std::uint16_t result) {
+    switch (result) {
+    case 0: return "Success";
+    case 1: return "NotAuthenticated";
+    case 2: return "RoomNotFound";
+    case 3: return "RoomFull";
+    case 4: return "AlreadyInRoom";
+    case 5: return "NotInRoom";
+    case 6: return "InvalidPayload";
+    case 7: return "InternalError";
     default: return "Unknown";
     }
 }
@@ -288,6 +353,21 @@ std::string formatLoginResult(std::span<const char> payload) {
     return output.str();
 }
 
+std::string formatRoomResult(std::span<const char> payload) {
+    std::uint16_t result = 0;
+    std::uint32_t room_id = 0;
+
+    if (payload.size() != 6 || !readU16(payload, 0, result) || !readU32(payload, 2, room_id)) {
+        return " room_result=<malformed>";
+    }
+
+    std::ostringstream output;
+    output << " room_result=" << roomResultName(result)
+           << '(' << result << ')'
+           << " room_id=" << room_id;
+    return output.str();
+}
+
 std::string formatPacket(const Packet& packet) {
     std::ostringstream output;
     output << "[recv] type=" << packetTypeName(packet.type)
@@ -297,6 +377,10 @@ std::string formatPacket(const Packet& packet) {
 
     if (packet.type == S2C_LOGIN_RESULT) {
         output << formatLoginResult(packet.payload);
+    } else if (packet.type == S2C_ROOM_CREATED ||
+               packet.type == S2C_ROOM_JOINED ||
+               packet.type == S2C_ROOM_LEFT) {
+        output << formatRoomResult(packet.payload);
     } else {
         output << formatPayload(packet.payload);
     }
@@ -378,6 +462,9 @@ void printHelp() {
         "Commands:\n"
         "  ping [message]          send C2S_PING\n"
         "  login <id> <password>   send C2S_LOGIN\n"
+        "  create-room <name> <max_players>\n"
+        "  join-room <room_id>\n"
+        "  leave-room\n"
         "  chat <message>          send C2S_CHAT\n"
         "  send <type> [payload]   send an arbitrary packet type\n"
         "  wait [ms]               pause before the next command\n"
@@ -496,6 +583,54 @@ int main(int argc, char* argv[]) {
                 );
                 continue;
             }
+        } else if (command == "create-room") {
+            std::string name;
+            std::string max_players_text;
+            input >> name >> max_players_text;
+
+            std::uint32_t max_players = 0;
+            if (name.empty() ||
+                !parseUnsigned(max_players_text, 64, max_players) ||
+                max_players == 0) {
+                printLine(
+                    "[error] usage: create-room <name> <max_players> "
+                    "(name 1-64 bytes, max_players 1-64)"
+                );
+                continue;
+            }
+
+            packet.type = C2S_CREATE_ROOM;
+            packet.payload = makeCreateRoomPayload(
+                name,
+                static_cast<std::uint16_t>(max_players)
+            );
+
+            if (packet.payload.empty()) {
+                printLine(
+                    "[error] usage: create-room <name> <max_players> "
+                    "(name 1-64 bytes, max_players 1-64)"
+                );
+                continue;
+            }
+        } else if (command == "join-room") {
+            std::string room_id_text;
+            input >> room_id_text;
+
+            std::uint32_t room_id = 0;
+            if (!parseUnsigned(
+                    room_id_text,
+                    std::numeric_limits<std::uint32_t>::max(),
+                    room_id
+                ) ||
+                room_id == 0) {
+                printLine("[error] usage: join-room <room_id>");
+                continue;
+            }
+
+            packet.type = C2S_JOIN_ROOM;
+            packet.payload = makeJoinRoomPayload(room_id);
+        } else if (command == "leave-room") {
+            packet.type = C2S_LEAVE_ROOM;
         } else if (command == "chat") {
             packet.type = C2S_CHAT;
             const std::string message = remainingText(input);
