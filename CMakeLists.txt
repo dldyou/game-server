@@ -15,6 +15,7 @@ add_executable(game-server
     src/auth/LoginProtocol.cpp
     src/users/UserManager.cpp
     src/rooms/Room.cpp
+    src/rooms/RoomManager.cpp
     src/rooms/RoomProtocol.cpp
 )
 
