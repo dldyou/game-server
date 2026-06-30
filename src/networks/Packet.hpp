@@ -30,6 +30,12 @@ empty
 
 S2C_ROOM_LEFT
 [result:u16][room_id:u32]
+
+C2S_CHAT
+[message_length:u16][message]
+
+S2C_CHAT
+[user_id:u64][handle_length:u16][handle][message_length:u16][message]
 */
 
 enum PacketType : std::uint16_t {
