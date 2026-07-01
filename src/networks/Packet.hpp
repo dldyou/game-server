@@ -32,15 +32,27 @@ S2C_ROOM_LEFT
 [result:u16][room_id:u32]
 
 S2C_ROOM_STATE
-[room_id:u32][name_length:u16][name][max_players:u16][player_count:u16]
-players: [user_id:u64][handle_length:u16][handle] ...
+[room_id:u32][status:u16][owner_user_id:u64][name_length:u16][name][max_players:u16][player_count:u16]
+players: [user_id:u64][ready:u8][handle_length:u16][handle] ...
 
 C2S_ROOM_LIST
 empty
 
 S2C_ROOM_LIST
 [room_count:u16]
-rooms: [room_id:u32][name_length:u16][name][max_players:u16][player_count:u16] ...
+rooms: [room_id:u32][status:u16][name_length:u16][name][max_players:u16][player_count:u16] ...
+
+C2S_SET_READY
+[ready:u8]
+
+S2C_READY_SET
+[result:u16][room_id:u32]
+
+C2S_START_GAME
+empty
+
+S2C_GAME_STARTED
+[result:u16][room_id:u32]
 
 C2S_CHAT
 [message_length:u16][message]
@@ -65,6 +77,10 @@ enum PacketType : std::uint16_t {
     S2C_ROOM_STATE = 206,
     C2S_ROOM_LIST = 207,
     S2C_ROOM_LIST = 208,
+    C2S_SET_READY = 209,
+    S2C_READY_SET = 210,
+    C2S_START_GAME = 211,
+    S2C_GAME_STARTED = 212,
 
     C2S_CHAT = 300,
     S2C_CHAT = 301,
