@@ -31,6 +31,10 @@ empty
 S2C_ROOM_LEFT
 [result:u16][room_id:u32]
 
+S2C_ROOM_STATE
+[room_id:u32][name_length:u16][name][max_players:u16][player_count:u16]
+players: [user_id:u64][handle_length:u16][handle] ...
+
 C2S_CHAT
 [message_length:u16][message]
 
