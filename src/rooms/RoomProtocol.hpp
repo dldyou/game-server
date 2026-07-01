@@ -49,5 +49,6 @@ public:
     );
 
     static std::vector<char> encodeRoomState(const RoomState& state);
+    static std::vector<char> encodeRoomList(const std::vector<RoomSummary>& rooms);
 };
 

@@ -106,6 +106,7 @@ std::vector<char> RoomProtocol::encodeRoomResult(RoomResult result, std::uint32_
 
     return output;
 }
+
 std::vector<char> RoomProtocol::encodeRoomState(const RoomState& state) {
     if (state.room_id == 0 || state.room_name.empty() || state.room_name.size() > max_room_name_length ||
         state.max_players == 0 || state.max_players > max_room_players || state.players.size() > max_room_players) {
@@ -129,6 +130,31 @@ std::vector<char> RoomProtocol::encodeRoomState(const RoomState& state) {
         appendU64(output, player.user_id);
         appendU16(output, static_cast<std::uint16_t>(player.handle.size()));
         output.insert(output.end(), player.handle.begin(), player.handle.end());
+    }
+
+    return output;
+}
+
+std::vector<char> RoomProtocol::encodeRoomList(const std::vector<RoomSummary>& rooms) {
+    if (rooms.size() > std::numeric_limits<std::uint16_t>::max()) {
+        return {};
+    }
+
+    std::vector<char> output;
+    output.reserve(2 + rooms.size() * 16);
+    appendU16(output, static_cast<std::uint16_t>(rooms.size()));
+
+    for (const RoomSummary& room : rooms) {
+        if (room.room_id == 0 || room.room_name.empty() || room.room_name.size() > max_room_name_length ||
+            room.max_players == 0 || room.max_players > max_room_players || room.player_count > room.max_players) {
+            return {};
+        }
+
+        appendU32(output, room.room_id);
+        appendU16(output, static_cast<std::uint16_t>(room.room_name.size()));
+        output.insert(output.end(), room.room_name.begin(), room.room_name.end());
+        appendU16(output, room.max_players);
+        appendU16(output, room.player_count);
     }
 
     return output;
