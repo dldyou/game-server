@@ -49,6 +49,8 @@ private:
         LoginResponse response
     );
     bool sendRoomResult(int epoll_fd, Session& session, std::uint32_t sequence, PacketType type, RoomResult result, std::uint32_t room_id);
+    bool sendRoomState(int epoll_fd, Session& session, std::uint32_t sequence, const RoomState& state);
+    bool broadcastRoomState(int epoll_fd, std::uint32_t sequence, const RoomState& state);
 
     bool requiresAuthentication(PacketType type) const;
 

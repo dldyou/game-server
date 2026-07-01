@@ -72,7 +72,18 @@ bool Server::handleCreateRoom(int epoll_fd, Session& session, const Packet& pack
         session.enterRoom(room_id);
     }
 
-    return sendRoomResult(epoll_fd, session, packet.sequence, S2C_ROOM_CREATED, result.result, room_id);
+    if (!sendRoomResult(epoll_fd, session, packet.sequence, S2C_ROOM_CREATED, result.result, room_id)) {
+        return false;
+    }
+
+    if (result.result == RoomResult::Success) {
+        auto state = room_manager.roomState(room_id);
+        if (state && !broadcastRoomState(epoll_fd, packet.sequence, *state)) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 bool Server::handleJoinRoom(int epoll_fd, Session& session, const Packet& packet) {
@@ -92,7 +103,18 @@ bool Server::handleJoinRoom(int epoll_fd, Session& session, const Packet& packet
         session.enterRoom(result_room_id);
     }
 
-    return sendRoomResult(epoll_fd, session, packet.sequence, S2C_ROOM_JOINED, result.result, result_room_id);
+    if (!sendRoomResult(epoll_fd, session, packet.sequence, S2C_ROOM_JOINED, result.result, result_room_id)) {
+        return false;
+    }
+
+    if (result.result == RoomResult::Success) {
+        auto state = room_manager.roomState(result_room_id);
+        if (state && !broadcastRoomState(epoll_fd, packet.sequence, *state)) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 bool Server::handleLeaveRoom(int epoll_fd, Session& session, const Packet& packet) {
@@ -111,7 +133,18 @@ bool Server::handleLeaveRoom(int epoll_fd, Session& session, const Packet& packe
         session.leaveRoom();
     }
 
-    return sendRoomResult(epoll_fd, session, packet.sequence, S2C_ROOM_LEFT, result.result, room_id);
+    if (!sendRoomResult(epoll_fd, session, packet.sequence, S2C_ROOM_LEFT, result.result, room_id)) {
+        return false;
+    }
+
+    if (result.result == RoomResult::Success) {
+        auto state = room_manager.roomState(room_id);
+        if (state && !broadcastRoomState(epoll_fd, packet.sequence, *state)) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 bool Server::handleChat(int epoll_fd, Session& session, const Packet& packet) {
@@ -185,6 +218,36 @@ bool Server::sendRoomResult(int epoll_fd, Session& session, std::uint32_t sequen
     };
 
     return queuePacket(epoll_fd, session, packet);
+}
+
+bool Server::sendRoomState(int epoll_fd, Session& session, std::uint32_t sequence, const RoomState& state) {
+    Packet packet{
+        .type = S2C_ROOM_STATE,
+        .sequence = sequence,
+        .payload = RoomProtocol::encodeRoomState(state),
+    };
+
+    if (packet.payload.empty()) {
+        std::cerr << "Failed to encode room state payload\n";
+        return false;
+    }
+
+    return queuePacket(epoll_fd, session, packet);
+}
+
+bool Server::broadcastRoomState(int epoll_fd, std::uint32_t sequence, const RoomState& state) {
+    for (const RoomPlayer& player : state.players) {
+        auto session_it = sessions.find(player.session_fd);
+        if (session_it == sessions.end()) {
+            continue;
+        }
+
+        if (!sendRoomState(epoll_fd, session_it->second, sequence, state)) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 bool Server::requiresAuthentication(PacketType type) const {
@@ -387,14 +450,26 @@ void Server::closeClient(int epoll_fd, int client_fd) {
         }
     }
 
+    std::uint32_t removed_room_id = 0;
     auto session_it = sessions.find(client_fd);
     if (session_it != sessions.end()) {
         if (const AuthenticatedUser* user = session_it->second.authenticatedUser()) {
+            if (auto room_id = room_manager.roomIdOf(user->user_id)) {
+                removed_room_id = *room_id;
+            }
             room_manager.removeSession(user->user_id);
         }
     }
 
     sessions.erase(client_fd);
+
+    if (removed_room_id != 0) {
+        auto state = room_manager.roomState(removed_room_id);
+        if (state && !broadcastRoomState(epoll_fd, 0, *state)) {
+            std::cerr << "Failed to broadcast room state after disconnect\n";
+        }
+    }
+
     close(client_fd);
 }
 
