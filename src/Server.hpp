@@ -40,6 +40,7 @@ private:
     bool handleCreateRoom(int epoll_fd, Session& session, const Packet& packet);
     bool handleJoinRoom(int epoll_fd, Session& session, const Packet& packet);
     bool handleLeaveRoom(int epoll_fd, Session& session, const Packet& packet);
+    bool handleRoomList(int epoll_fd, Session& session, const Packet& packet);
     bool handleChat(int epoll_fd, Session& session, const Packet& packet);
 
     bool sendLoginResult(
@@ -50,6 +51,7 @@ private:
     );
     bool sendRoomResult(int epoll_fd, Session& session, std::uint32_t sequence, PacketType type, RoomResult result, std::uint32_t room_id);
     bool sendRoomState(int epoll_fd, Session& session, std::uint32_t sequence, const RoomState& state);
+    bool sendRoomList(int epoll_fd, Session& session, std::uint32_t sequence, const std::vector<RoomSummary>& rooms);
     bool broadcastRoomState(int epoll_fd, std::uint32_t sequence, const RoomState& state);
 
     bool requiresAuthentication(PacketType type) const;

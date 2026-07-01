@@ -147,6 +147,15 @@ bool Server::handleLeaveRoom(int epoll_fd, Session& session, const Packet& packe
     return true;
 }
 
+bool Server::handleRoomList(int epoll_fd, Session& session, const Packet& packet) {
+    if (!packet.payload.empty()) {
+        std::cerr << "Invalid room list payload from session " << session.fd() << "\n";
+        return true;
+    }
+
+    return sendRoomList(epoll_fd, session, packet.sequence, room_manager.roomList());
+}
+
 bool Server::handleChat(int epoll_fd, Session& session, const Packet& packet) {
     const AuthenticatedUser* user = session.authenticatedUser();
     if (user == nullptr) {
@@ -235,6 +244,21 @@ bool Server::sendRoomState(int epoll_fd, Session& session, std::uint32_t sequenc
     return queuePacket(epoll_fd, session, packet);
 }
 
+bool Server::sendRoomList(int epoll_fd, Session& session, std::uint32_t sequence, const std::vector<RoomSummary>& rooms) {
+    Packet packet{
+        .type = S2C_ROOM_LIST,
+        .sequence = sequence,
+        .payload = RoomProtocol::encodeRoomList(rooms),
+    };
+
+    if (packet.payload.empty()) {
+        std::cerr << "Failed to encode room list payload\n";
+        return false;
+    }
+
+    return queuePacket(epoll_fd, session, packet);
+}
+
 bool Server::broadcastRoomState(int epoll_fd, std::uint32_t sequence, const RoomState& state) {
     for (const RoomPlayer& player : state.players) {
         auto session_it = sessions.find(player.session_fd);
@@ -255,6 +279,7 @@ bool Server::requiresAuthentication(PacketType type) const {
     case C2S_CREATE_ROOM:
     case C2S_JOIN_ROOM:
     case C2S_LEAVE_ROOM:
+    case C2S_ROOM_LIST:
     case C2S_CHAT:
     case C2S_MOVE:
     case C2S_ATTACK:
@@ -324,6 +349,8 @@ bool Server::handlePacket(int epoll_fd, Session& session, const Packet& packet) 
         return handleJoinRoom(epoll_fd, session, packet);
     case C2S_LEAVE_ROOM:
         return handleLeaveRoom(epoll_fd, session, packet);
+    case C2S_ROOM_LIST:
+        return handleRoomList(epoll_fd, session, packet);
     case C2S_CHAT:
         return handleChat(epoll_fd, session, packet);
     case C2S_MOVE:
@@ -498,12 +525,10 @@ int Server::init(const ServerConfig& server_config) {
     }
 
     initClients();
-    user_manager.createUser({
-        .id = 1,
-        .handle = "tester",
-        .login_id = "test",
-        .password = "password",
-        });
+    user_manager.createUser({ .id = 1, .handle = "tester", .login_id = "test", .password = "password" });
+    user_manager.createUser({ .id = 2, .handle = "tester2", .login_id = "test2", .password = "password" });
+    user_manager.createUser({ .id = 3, .handle = "tester3", .login_id = "test3", .password = "password" });
+    user_manager.createUser({ .id = 4, .handle = "tester4", .login_id = "test4", .password = "password" });
 
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         perror("socket");
