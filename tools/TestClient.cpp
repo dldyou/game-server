@@ -204,6 +204,10 @@ std::string packetTypeName(PacketType type) {
     case S2C_ROOM_STATE: return "S2C_ROOM_STATE";
     case C2S_ROOM_LIST: return "C2S_ROOM_LIST";
     case S2C_ROOM_LIST: return "S2C_ROOM_LIST";
+    case C2S_SET_READY: return "C2S_SET_READY";
+    case S2C_READY_SET: return "S2C_READY_SET";
+    case C2S_START_GAME: return "C2S_START_GAME";
+    case S2C_GAME_STARTED: return "S2C_GAME_STARTED";
     case C2S_CHAT: return "C2S_CHAT";
     case S2C_CHAT: return "S2C_CHAT";
     case C2S_MOVE: return "C2S_MOVE";
@@ -329,6 +333,17 @@ std::string roomResultName(std::uint16_t result) {
     case 5: return "NotInRoom";
     case 6: return "InvalidPayload";
     case 7: return "InternalError";
+    case 8: return "RoomInProgress";
+    case 9: return "NotOwner";
+    case 10: return "NotReady";
+    default: return "Unknown";
+    }
+}
+
+std::string roomStatusName(std::uint16_t status) {
+    switch (status) {
+    case 0: return "Waiting";
+    case 1: return "Playing";
     default: return "Unknown";
     }
 }
@@ -393,12 +408,13 @@ std::string formatRoomList(std::span<const char> payload) {
     std::size_t offset = 2;
     for (std::uint16_t i = 0; i < room_count; ++i) {
         std::uint32_t room_id = 0;
+        std::uint16_t status = 0;
         std::uint16_t name_length = 0;
-        if (!readU32(payload, offset, room_id) || !readU16(payload, offset + 4, name_length)) {
+        if (!readU32(payload, offset, room_id) || !readU16(payload, offset + 4, status) || !readU16(payload, offset + 6, name_length)) {
             return " room_list=<malformed>";
         }
 
-        const std::size_t name_offset = offset + 6;
+        const std::size_t name_offset = offset + 8;
         if (payload.size() < name_offset + name_length + 4) {
             return " room_list=<malformed>";
         }
@@ -413,7 +429,7 @@ std::string formatRoomList(std::span<const char> payload) {
         if (i != 0) {
             output << ',';
         }
-        output << room_id << ":\"" << std::string(payload.begin() + static_cast<std::ptrdiff_t>(name_offset), payload.begin() + static_cast<std::ptrdiff_t>(max_players_offset)) << "\"(" << player_count << '/' << max_players << ')';
+        output << room_id << ":\"" << std::string(payload.begin() + static_cast<std::ptrdiff_t>(name_offset), payload.begin() + static_cast<std::ptrdiff_t>(max_players_offset)) << "\"(" << player_count << '/' << max_players << ',' << roomStatusName(status) << ')';
         offset = max_players_offset + 4;
     }
 
@@ -424,15 +440,16 @@ std::string formatRoomList(std::span<const char> payload) {
     output << ']';
     return output.str();
 }
-
 std::string formatRoomState(std::span<const char> payload) {
     std::uint32_t room_id = 0;
+    std::uint16_t status = 0;
+    std::uint64_t owner_user_id = 0;
     std::uint16_t name_length = 0;
-    if (!readU32(payload, 0, room_id) || !readU16(payload, 4, name_length)) {
+    if (!readU32(payload, 0, room_id) || !readU16(payload, 4, status) || !readU64(payload, 6, owner_user_id) || !readU16(payload, 14, name_length)) {
         return " room_state=<malformed>";
     }
 
-    const std::size_t name_offset = 6;
+    const std::size_t name_offset = 16;
     if (payload.size() < name_offset + name_length + 4) {
         return " room_state=<malformed>";
     }
@@ -446,6 +463,8 @@ std::string formatRoomState(std::span<const char> payload) {
 
     std::ostringstream output;
     output << " room_state room_id=" << room_id
+           << " status=" << roomStatusName(status)
+           << " owner_user_id=" << owner_user_id
            << " name=\"" << std::string(payload.begin() + static_cast<std::ptrdiff_t>(name_offset), payload.begin() + static_cast<std::ptrdiff_t>(max_players_offset)) << '\"'
            << " max_players=" << max_players
            << " players=[";
@@ -454,11 +473,16 @@ std::string formatRoomState(std::span<const char> payload) {
     for (std::uint16_t i = 0; i < player_count; ++i) {
         std::uint64_t user_id = 0;
         std::uint16_t handle_length = 0;
-        if (!readU64(payload, offset, user_id) || !readU16(payload, offset + 8, handle_length)) {
+        if (!readU64(payload, offset, user_id) || payload.size() <= offset + 8 || !readU16(payload, offset + 9, handle_length)) {
             return " room_state=<malformed>";
         }
 
-        const std::size_t handle_offset = offset + 10;
+        const unsigned char ready = static_cast<unsigned char>(payload[offset + 8]);
+        if (ready > 1) {
+            return " room_state=<malformed>";
+        }
+
+        const std::size_t handle_offset = offset + 11;
         if (payload.size() < handle_offset + handle_length) {
             return " room_state=<malformed>";
         }
@@ -466,7 +490,11 @@ std::string formatRoomState(std::span<const char> payload) {
         if (i != 0) {
             output << ',';
         }
-        output << user_id << ':' << std::string(payload.begin() + static_cast<std::ptrdiff_t>(handle_offset), payload.begin() + static_cast<std::ptrdiff_t>(handle_offset + handle_length));
+        output << user_id << ':' << std::string(payload.begin() + static_cast<std::ptrdiff_t>(handle_offset), payload.begin() + static_cast<std::ptrdiff_t>(handle_offset + handle_length)) << '(' << (ready == 1 ? "ready" : "not-ready");
+        if (user_id == owner_user_id) {
+            output << ",owner";
+        }
+        output << ')';
         offset = handle_offset + handle_length;
     }
 
@@ -514,7 +542,9 @@ std::string formatPacket(const Packet& packet) {
         output << formatLoginResult(packet.payload);
     } else if (packet.type == S2C_ROOM_CREATED ||
                packet.type == S2C_ROOM_JOINED ||
-               packet.type == S2C_ROOM_LEFT) {
+               packet.type == S2C_ROOM_LEFT ||
+               packet.type == S2C_READY_SET ||
+               packet.type == S2C_GAME_STARTED) {
         output << formatRoomResult(packet.payload);
     } else if (packet.type == S2C_ROOM_STATE) {
         output << formatRoomState(packet.payload);
@@ -607,6 +637,9 @@ void printHelp() {
         "  join-room <room_id>\n"
         "  leave-room\n"
         "  list-rooms              send C2S_ROOM_LIST\n"
+        "  ready                   send C2S_SET_READY true\n"
+        "  unready                 send C2S_SET_READY false\n"
+        "  start-game              send C2S_START_GAME\n"
         "  chat <message>          send C2S_CHAT\n"
         "  send <type> [payload]   send an arbitrary packet type\n"
         "  wait [ms]               pause before the next command\n"
@@ -775,6 +808,14 @@ int main(int argc, char* argv[]) {
             packet.type = C2S_LEAVE_ROOM;
         } else if (command == "list-rooms") {
             packet.type = C2S_ROOM_LIST;
+        } else if (command == "ready") {
+            packet.type = C2S_SET_READY;
+            packet.payload = { static_cast<char>(1) };
+        } else if (command == "unready") {
+            packet.type = C2S_SET_READY;
+            packet.payload = { static_cast<char>(0) };
+        } else if (command == "start-game") {
+            packet.type = C2S_START_GAME;
         } else if (command == "chat") {
             packet.type = C2S_CHAT;
             const std::string message = remainingText(input);
