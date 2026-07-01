@@ -19,6 +19,9 @@ enum class RoomResult {
     NotInRoom,
     InvalidPayload,
     InternalError,
+    RoomInProgress,
+    NotOwner,
+    NotReady,
 };
 
 struct CreateRoomRequest {
@@ -39,6 +42,8 @@ struct RoomState {
     std::uint32_t room_id;
     std::string room_name;
     std::uint16_t max_players;
+    std::uint64_t owner_user_id;
+    RoomStatus status;
     std::vector<RoomPlayer> players;
 };
 
@@ -47,6 +52,7 @@ struct RoomSummary {
     std::string room_name;
     std::uint16_t max_players;
     std::uint16_t player_count;
+    RoomStatus status;
 };
 
 class RoomManager {
@@ -61,6 +67,8 @@ public:
     RoomOperationResult createRoom(const AuthenticatedUser& user, int session_fd, const CreateRoomRequest& request);
     RoomOperationResult joinRoom(const AuthenticatedUser& user, int session_fd, std::uint32_t room_id);
     RoomOperationResult leaveRoom(std::uint64_t user_id);
+    RoomOperationResult setReady(std::uint64_t user_id, bool ready);
+    RoomOperationResult startGame(std::uint64_t user_id);
 
     void removeSession(std::uint64_t user_id);
     std::optional<std::uint32_t> roomIdOf(std::uint64_t user_id) const;
@@ -69,4 +77,3 @@ public:
     std::vector<RoomSummary> roomList() const;
     std::vector<RoomPlayer> playersInSameRoom(std::uint64_t user_id) const;
 };
-

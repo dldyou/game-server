@@ -9,6 +9,8 @@ RoomState makeRoomState(const Room& room) {
         .room_id = room.id(),
         .room_name = room.roomName(),
         .max_players = static_cast<std::uint16_t>(room.maxPlayers()),
+        .owner_user_id = room.ownerUserId(),
+        .status = room.roomStatus(),
         .players = {},
     };
 
@@ -29,6 +31,7 @@ RoomSummary makeRoomSummary(const Room& room) {
         .room_name = room.roomName(),
         .max_players = static_cast<std::uint16_t>(room.maxPlayers()),
         .player_count = static_cast<std::uint16_t>(room.playerCount()),
+        .status = room.roomStatus(),
     };
 }
 }
@@ -54,12 +57,8 @@ RoomOperationResult RoomManager::createRoom(const AuthenticatedUser& user, int s
         next_room_id = 1;
     }
 
-    Room room(room_id, request.room_name, static_cast<std::size_t>(request.max_players));
-    if (!room.addPlayer({
-            .user_id = user.user_id,
-            .handle = user.handle,
-            .session_fd = session_fd,
-        })) {
+    Room room(room_id, request.room_name, static_cast<std::size_t>(request.max_players), user.user_id);
+    if (!room.addPlayer({ .user_id = user.user_id, .handle = user.handle, .session_fd = session_fd, .ready = false })) {
         return { RoomResult::InternalError, std::nullopt };
     }
 
@@ -99,15 +98,15 @@ RoomOperationResult RoomManager::joinRoom(const AuthenticatedUser& user, int ses
     }
 
     Room& room = room_it->second;
+    if (!room.isWaiting()) {
+        return { RoomResult::RoomInProgress, room_id };
+    }
+
     if (room.isFull()) {
         return { RoomResult::RoomFull, room_id };
     }
 
-    if (!room.addPlayer({
-            .user_id = user.user_id,
-            .handle = user.handle,
-            .session_fd = session_fd,
-        })) {
+    if (!room.addPlayer({ .user_id = user.user_id, .handle = user.handle, .session_fd = session_fd, .ready = false })) {
         return { RoomResult::InternalError, room_id };
     }
 
@@ -146,6 +145,73 @@ RoomOperationResult RoomManager::leaveRoom(std::uint64_t user_id) {
 
     if (room_it->second.empty()) {
         rooms.erase(room_it);
+    }
+
+    return { RoomResult::Success, room_id };
+}
+
+RoomOperationResult RoomManager::setReady(std::uint64_t user_id, bool ready) {
+    if (user_id == 0) {
+        return { RoomResult::NotAuthenticated, std::nullopt };
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    auto mapping_it = room_by_user_id.find(user_id);
+    if (mapping_it == room_by_user_id.end()) {
+        return { RoomResult::NotInRoom, std::nullopt };
+    }
+
+    const std::uint32_t room_id = mapping_it->second;
+    auto room_it = rooms.find(room_id);
+    if (room_it == rooms.end()) {
+        return { RoomResult::RoomNotFound, room_id };
+    }
+
+    if (!room_it->second.isWaiting()) {
+        return { RoomResult::RoomInProgress, room_id };
+    }
+
+    if (!room_it->second.setReady(user_id, ready)) {
+        return { RoomResult::InternalError, room_id };
+    }
+
+    return { RoomResult::Success, room_id };
+}
+
+RoomOperationResult RoomManager::startGame(std::uint64_t user_id) {
+    if (user_id == 0) {
+        return { RoomResult::NotAuthenticated, std::nullopt };
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    auto mapping_it = room_by_user_id.find(user_id);
+    if (mapping_it == room_by_user_id.end()) {
+        return { RoomResult::NotInRoom, std::nullopt };
+    }
+
+    const std::uint32_t room_id = mapping_it->second;
+    auto room_it = rooms.find(room_id);
+    if (room_it == rooms.end()) {
+        return { RoomResult::RoomNotFound, room_id };
+    }
+
+    Room& room = room_it->second;
+    if (!room.isWaiting()) {
+        return { RoomResult::RoomInProgress, room_id };
+    }
+
+    if (room.ownerUserId() != user_id) {
+        return { RoomResult::NotOwner, room_id };
+    }
+
+    if (!room.allPlayersReady()) {
+        return { RoomResult::NotReady, room_id };
+    }
+
+    if (!room.startGame(user_id)) {
+        return { RoomResult::InternalError, room_id };
     }
 
     return { RoomResult::Success, room_id };
