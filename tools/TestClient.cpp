@@ -202,6 +202,8 @@ std::string packetTypeName(PacketType type) {
     case S2C_ROOM_JOINED: return "S2C_ROOM_JOINED";
     case S2C_ROOM_LEFT: return "S2C_ROOM_LEFT";
     case S2C_ROOM_STATE: return "S2C_ROOM_STATE";
+    case C2S_ROOM_LIST: return "C2S_ROOM_LIST";
+    case S2C_ROOM_LIST: return "S2C_ROOM_LIST";
     case C2S_CHAT: return "C2S_CHAT";
     case S2C_CHAT: return "S2C_CHAT";
     case C2S_MOVE: return "C2S_MOVE";
@@ -379,6 +381,50 @@ std::string formatRoomResult(std::span<const char> payload) {
     return output.str();
 }
 
+std::string formatRoomList(std::span<const char> payload) {
+    std::uint16_t room_count = 0;
+    if (!readU16(payload, 0, room_count)) {
+        return " room_list=<malformed>";
+    }
+
+    std::ostringstream output;
+    output << " room_list count=" << room_count << " rooms=[";
+
+    std::size_t offset = 2;
+    for (std::uint16_t i = 0; i < room_count; ++i) {
+        std::uint32_t room_id = 0;
+        std::uint16_t name_length = 0;
+        if (!readU32(payload, offset, room_id) || !readU16(payload, offset + 4, name_length)) {
+            return " room_list=<malformed>";
+        }
+
+        const std::size_t name_offset = offset + 6;
+        if (payload.size() < name_offset + name_length + 4) {
+            return " room_list=<malformed>";
+        }
+
+        const std::size_t max_players_offset = name_offset + name_length;
+        std::uint16_t max_players = 0;
+        std::uint16_t player_count = 0;
+        if (!readU16(payload, max_players_offset, max_players) || !readU16(payload, max_players_offset + 2, player_count)) {
+            return " room_list=<malformed>";
+        }
+
+        if (i != 0) {
+            output << ',';
+        }
+        output << room_id << ":\"" << std::string(payload.begin() + static_cast<std::ptrdiff_t>(name_offset), payload.begin() + static_cast<std::ptrdiff_t>(max_players_offset)) << "\"(" << player_count << '/' << max_players << ')';
+        offset = max_players_offset + 4;
+    }
+
+    if (offset != payload.size()) {
+        return " room_list=<malformed>";
+    }
+
+    output << ']';
+    return output.str();
+}
+
 std::string formatRoomState(std::span<const char> payload) {
     std::uint32_t room_id = 0;
     std::uint16_t name_length = 0;
@@ -472,6 +518,8 @@ std::string formatPacket(const Packet& packet) {
         output << formatRoomResult(packet.payload);
     } else if (packet.type == S2C_ROOM_STATE) {
         output << formatRoomState(packet.payload);
+    } else if (packet.type == S2C_ROOM_LIST) {
+        output << formatRoomList(packet.payload);
     } else if (packet.type == S2C_CHAT) {
         output << formatChatMessage(packet.payload);
     } else {
@@ -558,6 +606,7 @@ void printHelp() {
         "  create-room <name> <max_players>\n"
         "  join-room <room_id>\n"
         "  leave-room\n"
+        "  list-rooms              send C2S_ROOM_LIST\n"
         "  chat <message>          send C2S_CHAT\n"
         "  send <type> [payload]   send an arbitrary packet type\n"
         "  wait [ms]               pause before the next command\n"
@@ -724,6 +773,8 @@ int main(int argc, char* argv[]) {
             packet.payload = makeJoinRoomPayload(room_id);
         } else if (command == "leave-room") {
             packet.type = C2S_LEAVE_ROOM;
+        } else if (command == "list-rooms") {
+            packet.type = C2S_ROOM_LIST;
         } else if (command == "chat") {
             packet.type = C2S_CHAT;
             const std::string message = remainingText(input);
