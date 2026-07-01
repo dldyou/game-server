@@ -22,7 +22,17 @@ RoomState makeRoomState(const Room& room) {
     });
     return state;
 }
+
+RoomSummary makeRoomSummary(const Room& room) {
+    return RoomSummary{
+        .room_id = room.id(),
+        .room_name = room.roomName(),
+        .max_players = static_cast<std::uint16_t>(room.maxPlayers()),
+        .player_count = static_cast<std::uint16_t>(room.playerCount()),
+    };
 }
+}
+
 RoomOperationResult RoomManager::createRoom(const AuthenticatedUser& user, int session_fd, const CreateRoomRequest& request) {
     if (user.user_id == 0) {
         return { RoomResult::NotAuthenticated, std::nullopt };
@@ -177,6 +187,7 @@ std::optional<std::uint32_t> RoomManager::roomIdOf(std::uint64_t user_id) const 
 
     return mapping_it->second;
 }
+
 std::optional<RoomState> RoomManager::roomState(std::uint32_t room_id) const {
     std::lock_guard<std::mutex> lock(mutex_);
 
@@ -202,6 +213,21 @@ std::optional<RoomState> RoomManager::roomStateOf(std::uint64_t user_id) const {
     }
 
     return makeRoomState(room_it->second);
+}
+
+std::vector<RoomSummary> RoomManager::roomList() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    std::vector<RoomSummary> summaries;
+    summaries.reserve(rooms.size());
+    for (const auto& item : rooms) {
+        summaries.push_back(makeRoomSummary(item.second));
+    }
+
+    std::sort(summaries.begin(), summaries.end(), [](const RoomSummary& lhs, const RoomSummary& rhs) {
+        return lhs.room_id < rhs.room_id;
+    });
+    return summaries;
 }
 
 std::vector<RoomPlayer> RoomManager::playersInSameRoom(std::uint64_t user_id) const {

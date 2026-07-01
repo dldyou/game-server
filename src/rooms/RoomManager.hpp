@@ -42,6 +42,13 @@ struct RoomState {
     std::vector<RoomPlayer> players;
 };
 
+struct RoomSummary {
+    std::uint32_t room_id;
+    std::string room_name;
+    std::uint16_t max_players;
+    std::uint16_t player_count;
+};
+
 class RoomManager {
 private:
     mutable std::mutex mutex_;
@@ -59,6 +66,7 @@ public:
     std::optional<std::uint32_t> roomIdOf(std::uint64_t user_id) const;
     std::optional<RoomState> roomState(std::uint32_t room_id) const;
     std::optional<RoomState> roomStateOf(std::uint64_t user_id) const;
+    std::vector<RoomSummary> roomList() const;
     std::vector<RoomPlayer> playersInSameRoom(std::uint64_t user_id) const;
 };
 
