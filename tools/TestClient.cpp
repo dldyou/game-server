@@ -379,6 +379,58 @@ std::string formatRoomResult(std::span<const char> payload) {
     return output.str();
 }
 
+std::string formatRoomState(std::span<const char> payload) {
+    std::uint32_t room_id = 0;
+    std::uint16_t name_length = 0;
+    if (!readU32(payload, 0, room_id) || !readU16(payload, 4, name_length)) {
+        return " room_state=<malformed>";
+    }
+
+    const std::size_t name_offset = 6;
+    if (payload.size() < name_offset + name_length + 4) {
+        return " room_state=<malformed>";
+    }
+
+    const std::size_t max_players_offset = name_offset + name_length;
+    std::uint16_t max_players = 0;
+    std::uint16_t player_count = 0;
+    if (!readU16(payload, max_players_offset, max_players) || !readU16(payload, max_players_offset + 2, player_count)) {
+        return " room_state=<malformed>";
+    }
+
+    std::ostringstream output;
+    output << " room_state room_id=" << room_id
+           << " name=\"" << std::string(payload.begin() + static_cast<std::ptrdiff_t>(name_offset), payload.begin() + static_cast<std::ptrdiff_t>(max_players_offset)) << '\"'
+           << " max_players=" << max_players
+           << " players=[";
+
+    std::size_t offset = max_players_offset + 4;
+    for (std::uint16_t i = 0; i < player_count; ++i) {
+        std::uint64_t user_id = 0;
+        std::uint16_t handle_length = 0;
+        if (!readU64(payload, offset, user_id) || !readU16(payload, offset + 8, handle_length)) {
+            return " room_state=<malformed>";
+        }
+
+        const std::size_t handle_offset = offset + 10;
+        if (payload.size() < handle_offset + handle_length) {
+            return " room_state=<malformed>";
+        }
+
+        if (i != 0) {
+            output << ',';
+        }
+        output << user_id << ':' << std::string(payload.begin() + static_cast<std::ptrdiff_t>(handle_offset), payload.begin() + static_cast<std::ptrdiff_t>(handle_offset + handle_length));
+        offset = handle_offset + handle_length;
+    }
+
+    if (offset != payload.size()) {
+        return " room_state=<malformed>";
+    }
+
+    output << ']';
+    return output.str();
+}
 std::string formatChatMessage(std::span<const char> payload) {
     std::uint64_t user_id = 0;
     std::uint16_t handle_length = 0;
@@ -418,6 +470,8 @@ std::string formatPacket(const Packet& packet) {
                packet.type == S2C_ROOM_JOINED ||
                packet.type == S2C_ROOM_LEFT) {
         output << formatRoomResult(packet.payload);
+    } else if (packet.type == S2C_ROOM_STATE) {
+        output << formatRoomState(packet.payload);
     } else if (packet.type == S2C_CHAT) {
         output << formatChatMessage(packet.payload);
     } else {
