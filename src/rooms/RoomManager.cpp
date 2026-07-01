@@ -156,4 +156,23 @@ std::optional<std::uint32_t> RoomManager::roomIdOf(std::uint64_t user_id) const 
 
     return mapping_it->second;
 }
+std::vector<RoomPlayer> RoomManager::playersInSameRoom(std::uint64_t user_id) const {
+    std::lock_guard<std::mutex> lock(mutex_);
 
+    auto mapping_it = room_by_user_id.find(user_id);
+    if (mapping_it == room_by_user_id.end()) {
+        return {};
+    }
+
+    auto room_it = rooms.find(mapping_it->second);
+    if (room_it == rooms.end()) {
+        return {};
+    }
+
+    std::vector<RoomPlayer> players;
+    players.reserve(room_it->second.roomPlayers().size());
+    for (const auto& [_, player] : room_it->second.roomPlayers()) {
+        players.push_back(player);
+    }
+    return players;
+}

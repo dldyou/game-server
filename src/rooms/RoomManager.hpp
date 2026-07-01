@@ -5,6 +5,7 @@
 #include <optional>
 #include <mutex>
 #include <unordered_map>
+#include <vector>
 
 #include "Room.hpp"
 #include "auth/AuthResult.hpp"
@@ -49,5 +50,6 @@ public:
 
     void removeSession(std::uint64_t user_id);
     std::optional<std::uint32_t> roomIdOf(std::uint64_t user_id) const;
+    std::vector<RoomPlayer> playersInSameRoom(std::uint64_t user_id) const;
 };
 
