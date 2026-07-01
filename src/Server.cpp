@@ -12,6 +12,7 @@
 #include "users/UserManager.hpp"
 #include "auth/LoginProtocol.hpp"
 #include "rooms/RoomProtocol.hpp"
+#include "chat/ChatProtocol.hpp"
 
 #include <cerrno>
 #include <cstddef>
@@ -113,6 +114,59 @@ bool Server::handleLeaveRoom(int epoll_fd, Session& session, const Packet& packe
     return sendRoomResult(epoll_fd, session, packet.sequence, S2C_ROOM_LEFT, result.result, room_id);
 }
 
+bool Server::handleChat(int epoll_fd, Session& session, const Packet& packet) {
+    const AuthenticatedUser* user = session.authenticatedUser();
+    if (user == nullptr) {
+        std::cerr << "Unauthenticated chat packet\n";
+        return true;
+    }
+
+    auto chat = ChatProtocol::decodeMessage(packet.payload);
+    if (!chat) {
+        std::cerr << "Invalid chat payload from session " << session.fd() << "\n";
+        return true;
+    }
+
+    if (!session.isInRoom()) {
+        std::cerr << "Chat from session outside room: " << session.fd() << "\n";
+        return true;
+    }
+
+    std::vector<RoomPlayer> recipients = room_manager.playersInSameRoom(user->user_id);
+    if (recipients.empty()) {
+        std::cerr << "Chat from user outside room: " << user->user_id << "\n";
+        return true;
+    }
+
+    Packet chat_packet{
+        .type = S2C_CHAT,
+        .sequence = packet.sequence,
+        .payload = ChatProtocol::encodeMessage({
+            .user_id = user->user_id,
+            .handle = user->handle,
+            .message = chat->message,
+        }),
+    };
+
+    if (chat_packet.payload.empty()) {
+        std::cerr << "Failed to encode chat payload\n";
+        return false;
+    }
+
+    for (const RoomPlayer& recipient : recipients) {
+        auto session_it = sessions.find(recipient.session_fd);
+        if (session_it == sessions.end()) {
+            continue;
+        }
+
+        if (!queuePacket(epoll_fd, session_it->second, chat_packet)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 bool Server::sendLoginResult(int epoll_fd, Session& session, std::uint32_t sequence, LoginResponse response) {
     Packet packet{
         .type = S2C_LOGIN_RESULT,
@@ -208,6 +262,7 @@ bool Server::handlePacket(int epoll_fd, Session& session, const Packet& packet) 
     case C2S_LEAVE_ROOM:
         return handleLeaveRoom(epoll_fd, session, packet);
     case C2S_CHAT:
+        return handleChat(epoll_fd, session, packet);
     case C2S_MOVE:
     case C2S_ATTACK:
         return true;

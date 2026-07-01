@@ -40,6 +40,7 @@ private:
     bool handleCreateRoom(int epoll_fd, Session& session, const Packet& packet);
     bool handleJoinRoom(int epoll_fd, Session& session, const Packet& packet);
     bool handleLeaveRoom(int epoll_fd, Session& session, const Packet& packet);
+    bool handleChat(int epoll_fd, Session& session, const Packet& packet);
 
     bool sendLoginResult(
         int epoll_fd,
