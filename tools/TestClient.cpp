@@ -178,6 +178,17 @@ std::vector<char> makeJoinRoomPayload(std::uint32_t room_id) {
     return payload;
 }
 
+std::vector<char> makeChatPayload(const std::string& message) {
+    if (message.empty() || message.size() > 1024) {
+        return {};
+    }
+
+    std::vector<char> payload;
+    payload.reserve(2 + message.size());
+    appendU16(payload, static_cast<std::uint16_t>(message.size()));
+    payload.insert(payload.end(), message.begin(), message.end());
+    return payload;
+}
 std::string packetTypeName(PacketType type) {
     switch (type) {
     case C2S_PING: return "C2S_PING";
@@ -368,6 +379,32 @@ std::string formatRoomResult(std::span<const char> payload) {
     return output.str();
 }
 
+std::string formatChatMessage(std::span<const char> payload) {
+    std::uint64_t user_id = 0;
+    std::uint16_t handle_length = 0;
+    if (!readU64(payload, 0, user_id) || !readU16(payload, 8, handle_length)) {
+        return " chat=<malformed>";
+    }
+
+    const std::size_t handle_offset = 10;
+    if (payload.size() < handle_offset + handle_length + 2) {
+        return " chat=<malformed>";
+    }
+
+    const std::size_t message_length_offset = handle_offset + handle_length;
+    std::uint16_t message_length = 0;
+    if (!readU16(payload, message_length_offset, message_length) ||
+        payload.size() != message_length_offset + 2 + message_length) {
+        return " chat=<malformed>";
+    }
+
+    const std::size_t message_offset = message_length_offset + 2;
+    std::ostringstream output;
+    output << " chat_user_id=" << user_id
+           << " handle=\"" << std::string(payload.begin() + static_cast<std::ptrdiff_t>(handle_offset), payload.begin() + static_cast<std::ptrdiff_t>(message_length_offset)) << '"'
+           << " message=\"" << std::string(payload.begin() + static_cast<std::ptrdiff_t>(message_offset), payload.end()) << '"';
+    return output.str();
+}
 std::string formatPacket(const Packet& packet) {
     std::ostringstream output;
     output << "[recv] type=" << packetTypeName(packet.type)
@@ -381,6 +418,8 @@ std::string formatPacket(const Packet& packet) {
                packet.type == S2C_ROOM_JOINED ||
                packet.type == S2C_ROOM_LEFT) {
         output << formatRoomResult(packet.payload);
+    } else if (packet.type == S2C_CHAT) {
+        output << formatChatMessage(packet.payload);
     } else {
         output << formatPayload(packet.payload);
     }
@@ -634,7 +673,12 @@ int main(int argc, char* argv[]) {
         } else if (command == "chat") {
             packet.type = C2S_CHAT;
             const std::string message = remainingText(input);
-            packet.payload.assign(message.begin(), message.end());
+            packet.payload = makeChatPayload(message);
+
+            if (packet.payload.empty()) {
+                printLine("[error] usage: chat <message> (message 1-1024 bytes)");
+                continue;
+            }
         } else if (command == "send") {
             std::string type_text;
             input >> type_text;
