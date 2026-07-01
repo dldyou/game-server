@@ -9,6 +9,7 @@ namespace {
     constexpr std::size_t max_room_name_length = 64;
     constexpr std::uint16_t min_room_players = 1;
     constexpr std::uint16_t max_room_players = 64;
+    constexpr std::size_t max_player_handle_length = 64;
 }
 
 bool RoomProtocol::readU16(std::span<const char> payload, std::size_t offset, std::uint16_t& value) {
@@ -46,6 +47,12 @@ void RoomProtocol::appendU16(std::vector<char>& output, std::uint16_t value) {
 
 void RoomProtocol::appendU32(std::vector<char>& output, std::uint32_t value) {
     for (int shift = 24; shift >= 0; shift -= 8) {
+        output.push_back(static_cast<char>((value >> shift) & 0xffU));
+    }
+}
+
+void RoomProtocol::appendU64(std::vector<char>& output, std::uint64_t value) {
+    for (int shift = 56; shift >= 0; shift -= 8) {
         output.push_back(static_cast<char>((value >> shift) & 0xffU));
     }
 }
@@ -99,4 +106,30 @@ std::vector<char> RoomProtocol::encodeRoomResult(RoomResult result, std::uint32_
 
     return output;
 }
+std::vector<char> RoomProtocol::encodeRoomState(const RoomState& state) {
+    if (state.room_id == 0 || state.room_name.empty() || state.room_name.size() > max_room_name_length ||
+        state.max_players == 0 || state.max_players > max_room_players || state.players.size() > max_room_players) {
+        return {};
+    }
 
+    std::vector<char> output;
+    output.reserve(8 + state.room_name.size() + state.players.size() * 16);
+
+    appendU32(output, state.room_id);
+    appendU16(output, static_cast<std::uint16_t>(state.room_name.size()));
+    output.insert(output.end(), state.room_name.begin(), state.room_name.end());
+    appendU16(output, state.max_players);
+    appendU16(output, static_cast<std::uint16_t>(state.players.size()));
+
+    for (const RoomPlayer& player : state.players) {
+        if (player.user_id == 0 || player.handle.empty() || player.handle.size() > max_player_handle_length) {
+            return {};
+        }
+
+        appendU64(output, player.user_id);
+        appendU16(output, static_cast<std::uint16_t>(player.handle.size()));
+        output.insert(output.end(), player.handle.begin(), player.handle.end());
+    }
+
+    return output;
+}

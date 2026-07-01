@@ -32,6 +32,8 @@ private:
         std::uint32_t value
     );
 
+    static void appendU64(std::vector<char>& output, std::uint64_t value);
+
 public:
     static std::optional<CreateRoomRequest> decodeCreateRoom(
         std::span<const char> payload
@@ -45,5 +47,7 @@ public:
         RoomResult result,
         std::uint32_t room_id
     );
+
+    static std::vector<char> encodeRoomState(const RoomState& state);
 };
 
