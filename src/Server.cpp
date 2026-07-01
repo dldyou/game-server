@@ -156,6 +156,58 @@ bool Server::handleRoomList(int epoll_fd, Session& session, const Packet& packet
     return sendRoomList(epoll_fd, session, packet.sequence, room_manager.roomList());
 }
 
+bool Server::handleSetReady(int epoll_fd, Session& session, const Packet& packet) {
+    const AuthenticatedUser* user = session.authenticatedUser();
+    if (user == nullptr) {
+        return sendRoomResult(epoll_fd, session, packet.sequence, S2C_READY_SET, RoomResult::NotAuthenticated, 0);
+    }
+
+    if (packet.payload.size() != 1 || (packet.payload[0] != 0 && packet.payload[0] != 1)) {
+        return sendRoomResult(epoll_fd, session, packet.sequence, S2C_READY_SET, RoomResult::InvalidPayload, 0);
+    }
+
+    RoomOperationResult result = room_manager.setReady(user->user_id, packet.payload[0] == 1);
+    const std::uint32_t room_id = result.room_id.value_or(0);
+    if (!sendRoomResult(epoll_fd, session, packet.sequence, S2C_READY_SET, result.result, room_id)) {
+        return false;
+    }
+
+    if (result.result == RoomResult::Success) {
+        auto state = room_manager.roomState(room_id);
+        if (state && !broadcastRoomState(epoll_fd, packet.sequence, *state)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool Server::handleStartGame(int epoll_fd, Session& session, const Packet& packet) {
+    const AuthenticatedUser* user = session.authenticatedUser();
+    if (user == nullptr) {
+        return sendRoomResult(epoll_fd, session, packet.sequence, S2C_GAME_STARTED, RoomResult::NotAuthenticated, 0);
+    }
+
+    if (!packet.payload.empty()) {
+        return sendRoomResult(epoll_fd, session, packet.sequence, S2C_GAME_STARTED, RoomResult::InvalidPayload, 0);
+    }
+
+    RoomOperationResult result = room_manager.startGame(user->user_id);
+    const std::uint32_t room_id = result.room_id.value_or(0);
+    if (!sendRoomResult(epoll_fd, session, packet.sequence, S2C_GAME_STARTED, result.result, room_id)) {
+        return false;
+    }
+
+    if (result.result == RoomResult::Success) {
+        auto state = room_manager.roomState(room_id);
+        if (state && !broadcastRoomState(epoll_fd, packet.sequence, *state)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 bool Server::handleChat(int epoll_fd, Session& session, const Packet& packet) {
     const AuthenticatedUser* user = session.authenticatedUser();
     if (user == nullptr) {
@@ -280,6 +332,8 @@ bool Server::requiresAuthentication(PacketType type) const {
     case C2S_JOIN_ROOM:
     case C2S_LEAVE_ROOM:
     case C2S_ROOM_LIST:
+    case C2S_SET_READY:
+    case C2S_START_GAME:
     case C2S_CHAT:
     case C2S_MOVE:
     case C2S_ATTACK:
@@ -351,6 +405,10 @@ bool Server::handlePacket(int epoll_fd, Session& session, const Packet& packet) 
         return handleLeaveRoom(epoll_fd, session, packet);
     case C2S_ROOM_LIST:
         return handleRoomList(epoll_fd, session, packet);
+    case C2S_SET_READY:
+        return handleSetReady(epoll_fd, session, packet);
+    case C2S_START_GAME:
+        return handleStartGame(epoll_fd, session, packet);
     case C2S_CHAT:
         return handleChat(epoll_fd, session, packet);
     case C2S_MOVE:
