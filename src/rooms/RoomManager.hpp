@@ -35,6 +35,13 @@ struct RoomOperationResult {
     std::optional<std::uint32_t> room_id;
 };
 
+struct RoomState {
+    std::uint32_t room_id;
+    std::string room_name;
+    std::uint16_t max_players;
+    std::vector<RoomPlayer> players;
+};
+
 class RoomManager {
 private:
     mutable std::mutex mutex_;
@@ -50,6 +57,8 @@ public:
 
     void removeSession(std::uint64_t user_id);
     std::optional<std::uint32_t> roomIdOf(std::uint64_t user_id) const;
+    std::optional<RoomState> roomState(std::uint32_t room_id) const;
+    std::optional<RoomState> roomStateOf(std::uint64_t user_id) const;
     std::vector<RoomPlayer> playersInSameRoom(std::uint64_t user_id) const;
 };
 

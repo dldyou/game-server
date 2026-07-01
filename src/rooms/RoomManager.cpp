@@ -1,7 +1,28 @@
 #include "RoomManager.hpp"
 
+#include <algorithm>
 #include <utility>
 
+namespace {
+RoomState makeRoomState(const Room& room) {
+    RoomState state{
+        .room_id = room.id(),
+        .room_name = room.roomName(),
+        .max_players = static_cast<std::uint16_t>(room.maxPlayers()),
+        .players = {},
+    };
+
+    state.players.reserve(room.roomPlayers().size());
+    for (const auto& item : room.roomPlayers()) {
+        state.players.push_back(item.second);
+    }
+
+    std::sort(state.players.begin(), state.players.end(), [](const RoomPlayer& lhs, const RoomPlayer& rhs) {
+        return lhs.user_id < rhs.user_id;
+    });
+    return state;
+}
+}
 RoomOperationResult RoomManager::createRoom(const AuthenticatedUser& user, int session_fd, const CreateRoomRequest& request) {
     if (user.user_id == 0) {
         return { RoomResult::NotAuthenticated, std::nullopt };
@@ -156,6 +177,33 @@ std::optional<std::uint32_t> RoomManager::roomIdOf(std::uint64_t user_id) const 
 
     return mapping_it->second;
 }
+std::optional<RoomState> RoomManager::roomState(std::uint32_t room_id) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    auto room_it = rooms.find(room_id);
+    if (room_it == rooms.end()) {
+        return std::nullopt;
+    }
+
+    return makeRoomState(room_it->second);
+}
+
+std::optional<RoomState> RoomManager::roomStateOf(std::uint64_t user_id) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    auto mapping_it = room_by_user_id.find(user_id);
+    if (mapping_it == room_by_user_id.end()) {
+        return std::nullopt;
+    }
+
+    auto room_it = rooms.find(mapping_it->second);
+    if (room_it == rooms.end()) {
+        return std::nullopt;
+    }
+
+    return makeRoomState(room_it->second);
+}
+
 std::vector<RoomPlayer> RoomManager::playersInSameRoom(std::uint64_t user_id) const {
     std::lock_guard<std::mutex> lock(mutex_);
 
