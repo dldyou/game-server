@@ -18,6 +18,8 @@ add_executable(game-server
     src/rooms/RoomManager.cpp
     src/rooms/RoomProtocol.cpp
     src/chat/ChatProtocol.cpp
+    src/game/Game.cpp
+    src/game/GameManager.cpp
 )
 
 target_include_directories(game-server PRIVATE src)
