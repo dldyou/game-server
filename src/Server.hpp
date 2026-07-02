@@ -12,6 +12,7 @@
 #include "users/UserManager.hpp"
 #include "auth/LoginProtocol.hpp"
 #include "rooms/RoomManager.hpp"
+#include "game/GameManager.hpp"
 
 class Server {
 private:
@@ -24,6 +25,7 @@ private:
 
     UserManager user_manager;
     RoomManager room_manager;
+    GameManager game_manager;
 
     void initClients();
     bool setNonBlocking(int fd);

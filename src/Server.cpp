@@ -131,6 +131,7 @@ bool Server::handleLeaveRoom(int epoll_fd, Session& session, const Packet& packe
     const std::uint32_t room_id = result.room_id.value_or(0);
     if (result.result == RoomResult::Success) {
         session.leaveRoom();
+        game_manager.removePlayer(room_id, user->user_id);
     }
 
     if (!sendRoomResult(epoll_fd, session, packet.sequence, S2C_ROOM_LEFT, result.result, room_id)) {
@@ -139,8 +140,12 @@ bool Server::handleLeaveRoom(int epoll_fd, Session& session, const Packet& packe
 
     if (result.result == RoomResult::Success) {
         auto state = room_manager.roomState(room_id);
-        if (state && !broadcastRoomState(epoll_fd, packet.sequence, *state)) {
-            return false;
+        if (state) {
+            if (!broadcastRoomState(epoll_fd, packet.sequence, *state)) {
+                return false;
+            }
+        } else {
+            game_manager.removeGame(room_id);
         }
     }
 
@@ -200,7 +205,16 @@ bool Server::handleStartGame(int epoll_fd, Session& session, const Packet& packe
 
     if (result.result == RoomResult::Success) {
         auto state = room_manager.roomState(room_id);
-        if (state && !broadcastRoomState(epoll_fd, packet.sequence, *state)) {
+        if (!state) {
+            return false;
+        }
+
+        if (!game_manager.createGame(*state)) {
+            std::cerr << "Failed to create game for room " << room_id << "\n";
+            return false;
+        }
+
+        if (!broadcastRoomState(epoll_fd, packet.sequence, *state)) {
             return false;
         }
     }
@@ -543,6 +557,9 @@ void Server::closeClient(int epoll_fd, int client_fd) {
                 removed_room_id = *room_id;
             }
             room_manager.removeSession(user->user_id);
+            if (removed_room_id != 0) {
+                game_manager.removePlayer(removed_room_id, user->user_id);
+            }
         }
     }
 
@@ -550,8 +567,12 @@ void Server::closeClient(int epoll_fd, int client_fd) {
 
     if (removed_room_id != 0) {
         auto state = room_manager.roomState(removed_room_id);
-        if (state && !broadcastRoomState(epoll_fd, 0, *state)) {
-            std::cerr << "Failed to broadcast room state after disconnect\n";
+        if (state) {
+            if (!broadcastRoomState(epoll_fd, 0, *state)) {
+                std::cerr << "Failed to broadcast room state after disconnect\n";
+            }
+        } else {
+            game_manager.removeGame(removed_room_id);
         }
     }
 
