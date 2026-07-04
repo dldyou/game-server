@@ -59,6 +59,13 @@ C2S_CHAT
 
 S2C_CHAT
 [user_id:u64][handle_length:u16][handle][message_length:u16][message]
+
+C2S_MOVE
+[dx:i16][dy:i16]
+
+S2C_SNAPSHOT
+[room_id:u32][tick:u64][player_count:u16]
+players: [user_id:u64][x:i32][y:i32][hp:u16] ...
 */
 
 enum PacketType : std::uint16_t {
