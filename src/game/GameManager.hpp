@@ -19,10 +19,11 @@ public:
     bool removeGame(std::uint32_t room_id);
     bool removePlayer(std::uint32_t room_id, std::uint64_t user_id);
     bool queueMove(std::uint32_t room_id, GameMoveInput input);
+    bool queueAttack(std::uint32_t room_id, GameAttackInput input);
     bool hasGame(std::uint32_t room_id) const;
     std::optional<Game> game(std::uint32_t room_id) const;
     std::optional<GameSnapshot> snapshot(std::uint32_t room_id) const;
     std::vector<std::uint32_t> gameRoomIds() const;
     std::size_t gameCount() const;
-    std::vector<GameSnapshot> tickAll();
+    std::vector<GameTickResult> tickAll();
 };
