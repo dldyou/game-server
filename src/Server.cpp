@@ -253,6 +253,31 @@ bool Server::handleMove(int, Session& session, const Packet& packet) {
     return true;
 }
 
+bool Server::handleAttack(int, Session& session, const Packet& packet) {
+    const AuthenticatedUser* user = session.authenticatedUser();
+    if (user == nullptr) {
+        std::cerr << "Unauthenticated attack packet\n";
+        return true;
+    }
+
+    auto attack = GameProtocol::decodeAttack(user->user_id, packet.payload);
+    if (!attack) {
+        std::cerr << "Invalid attack payload from session " << session.fd() << "\n";
+        return true;
+    }
+
+    auto room_id = session.currentRoomId();
+    if (!room_id) {
+        std::cerr << "Attack from session outside room: " << session.fd() << "\n";
+        return true;
+    }
+
+    if (!game_manager.queueAttack(*room_id, *attack)) {
+        std::cerr << "Attack ignored for user " << user->user_id << " in room " << *room_id << "\n";
+    }
+    return true;
+}
+
 bool Server::handleChat(int epoll_fd, Session& session, const Packet& packet) {
     const AuthenticatedUser* user = session.authenticatedUser();
     if (user == nullptr) {
@@ -371,6 +396,36 @@ bool Server::sendGameSnapshot(int epoll_fd, Session& session, const GameSnapshot
     return queuePacket(epoll_fd, session, packet);
 }
 
+bool Server::sendAttackEvent(int epoll_fd, Session& session, const GameAttackEvent& event) {
+    Packet packet{
+        .type = S2C_ATTACK,
+        .sequence = static_cast<std::uint32_t>(event.tick & 0xffffffffULL),
+        .payload = GameProtocol::encodeAttackEvent(event),
+    };
+
+    if (packet.payload.empty()) {
+        std::cerr << "Failed to encode game attack payload\n";
+        return false;
+    }
+
+    return queuePacket(epoll_fd, session, packet);
+}
+
+bool Server::sendGameEnded(int epoll_fd, Session& session, const GameEndEvent& event) {
+    Packet packet{
+        .type = S2C_GAME_ENDED,
+        .sequence = static_cast<std::uint32_t>(event.tick & 0xffffffffULL),
+        .payload = GameProtocol::encodeGameEnded(event),
+    };
+
+    if (packet.payload.empty()) {
+        std::cerr << "Failed to encode game ended payload\n";
+        return false;
+    }
+
+    return queuePacket(epoll_fd, session, packet);
+}
+
 bool Server::broadcastGameSnapshot(int epoll_fd, const GameSnapshot& snapshot) {
     for (const GamePlayerState& player : snapshot.players) {
         auto session_it = sessions.find(player.session_fd);
@@ -379,6 +434,34 @@ bool Server::broadcastGameSnapshot(int epoll_fd, const GameSnapshot& snapshot) {
         }
 
         if (!sendGameSnapshot(epoll_fd, session_it->second, snapshot)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool Server::broadcastAttackEvent(int epoll_fd, const GameSnapshot& snapshot, const GameAttackEvent& event) {
+    for (const GamePlayerState& player : snapshot.players) {
+        auto session_it = sessions.find(player.session_fd);
+        if (session_it == sessions.end()) {
+            continue;
+        }
+
+        if (!sendAttackEvent(epoll_fd, session_it->second, event)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool Server::broadcastGameEnded(int epoll_fd, const GameSnapshot& snapshot, const GameEndEvent& event) {
+    for (const GamePlayerState& player : snapshot.players) {
+        auto session_it = sessions.find(player.session_fd);
+        if (session_it == sessions.end()) {
+            continue;
+        }
+
+        if (!sendGameEnded(epoll_fd, session_it->second, event)) {
             return false;
         }
     }
@@ -488,7 +571,7 @@ bool Server::handlePacket(int epoll_fd, Session& session, const Packet& packet) 
     case C2S_MOVE:
         return handleMove(epoll_fd, session, packet);
     case C2S_ATTACK:
-        return true;
+        return handleAttack(epoll_fd, session, packet);
     default:
         std::cerr << "Unknown packet type: " << static_cast<std::uint16_t>(packet.type) << "\n";
         return true;
@@ -814,10 +897,30 @@ void Server::run(int server_fd, const ServerConfig& server_config) {
 
         const auto after_wait = std::chrono::steady_clock::now();
         while (after_wait >= next_game_tick) {
-            std::vector<GameSnapshot> snapshots = game_manager.tickAll();
-            for (const GameSnapshot& snapshot : snapshots) {
-                if (!broadcastGameSnapshot(epoll_fd, snapshot)) {
-                    std::cerr << "Failed to broadcast game snapshot for room " << snapshot.room_id << "\n";
+            std::vector<GameTickResult> results = game_manager.tickAll();
+            for (const GameTickResult& result : results) {
+                for (const GameAttackEvent& attack : result.attacks) {
+                    if (!broadcastAttackEvent(epoll_fd, result.snapshot, attack)) {
+                        std::cerr << "Failed to broadcast attack event for room " << attack.room_id << "\n";
+                    }
+                }
+
+                if (!broadcastGameSnapshot(epoll_fd, result.snapshot)) {
+                    std::cerr << "Failed to broadcast game snapshot for room " << result.snapshot.room_id << "\n";
+                }
+
+                if (result.ended) {
+                    if (!broadcastGameEnded(epoll_fd, result.snapshot, *result.ended)) {
+                        std::cerr << "Failed to broadcast game end for room " << result.ended->room_id << "\n";
+                    }
+
+                    if (!room_manager.finishGame(result.ended->room_id)) {
+                        std::cerr << "Failed to finish room " << result.ended->room_id << " after game end\n";
+                    } else if (auto state = room_manager.roomState(result.ended->room_id)) {
+                        if (!broadcastRoomState(epoll_fd, 0, *state)) {
+                            std::cerr << "Failed to broadcast room state after game end\n";
+                        }
+                    }
                 }
             }
             next_game_tick += game_tick_interval;

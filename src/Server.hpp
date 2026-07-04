@@ -46,6 +46,7 @@ private:
     bool handleSetReady(int epoll_fd, Session& session, const Packet& packet);
     bool handleStartGame(int epoll_fd, Session& session, const Packet& packet);
     bool handleMove(int epoll_fd, Session& session, const Packet& packet);
+    bool handleAttack(int epoll_fd, Session& session, const Packet& packet);
     bool handleChat(int epoll_fd, Session& session, const Packet& packet);
 
     bool sendLoginResult(int epoll_fd, Session& session, std::uint32_t sequence, LoginResponse response);
@@ -53,7 +54,11 @@ private:
     bool sendRoomState(int epoll_fd, Session& session, std::uint32_t sequence, const RoomState& state);
     bool sendRoomList(int epoll_fd, Session& session, std::uint32_t sequence, const std::vector<RoomSummary>& rooms);
     bool sendGameSnapshot(int epoll_fd, Session& session, const GameSnapshot& snapshot);
+    bool sendAttackEvent(int epoll_fd, Session& session, const GameAttackEvent& event);
+    bool sendGameEnded(int epoll_fd, Session& session, const GameEndEvent& event);
     bool broadcastGameSnapshot(int epoll_fd, const GameSnapshot& snapshot);
+    bool broadcastAttackEvent(int epoll_fd, const GameSnapshot& snapshot, const GameAttackEvent& event);
+    bool broadcastGameEnded(int epoll_fd, const GameSnapshot& snapshot, const GameEndEvent& event);
     bool broadcastRoomState(int epoll_fd, std::uint32_t sequence, const RoomState& state);
 
     bool requiresAuthentication(PacketType type) const;
