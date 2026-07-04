@@ -3,6 +3,20 @@
 #include <algorithm>
 #include <utility>
 
+namespace {
+    constexpr std::int32_t movement_speed = 1;
+
+    std::int16_t clampDirection(std::int16_t value) {
+        if (value < -1) {
+            return -1;
+        }
+        if (value > 1) {
+            return 1;
+        }
+        return value;
+    }
+}
+
 Game::Game(const RoomState& room_state)
     : room_id(room_state.room_id), owner_user_id(room_state.owner_user_id) {
     for (const RoomPlayer& player : room_state.players) {
@@ -21,12 +35,36 @@ bool Game::hasPlayer(std::uint64_t user_id) const {
     return players.find(user_id) != players.end();
 }
 
+bool Game::queueMove(GameMoveInput input) {
+    if (input.user_id == 0 || !hasPlayer(input.user_id)) {
+        return false;
+    }
+
+    input.dx = clampDirection(input.dx);
+    input.dy = clampDirection(input.dy);
+    pending_moves[input.user_id] = input;
+    return true;
+}
+
 bool Game::removePlayer(std::uint64_t user_id) {
+    pending_moves.erase(user_id);
     return players.erase(user_id) > 0;
 }
 
-void Game::tick() {
+GameSnapshot Game::tick() {
+    for (const auto& item : pending_moves) {
+        auto player_it = players.find(item.first);
+        if (player_it == players.end()) {
+            continue;
+        }
+
+        player_it->second.x += static_cast<std::int32_t>(item.second.dx) * movement_speed;
+        player_it->second.y += static_cast<std::int32_t>(item.second.dy) * movement_speed;
+    }
+
+    pending_moves.clear();
     ++tick_count;
+    return snapshot();
 }
 
 std::vector<GamePlayerState> Game::playerStates() const {
@@ -48,4 +86,12 @@ std::optional<GamePlayerState> Game::playerState(std::uint64_t user_id) const {
         return std::nullopt;
     }
     return player_it->second;
+}
+
+GameSnapshot Game::snapshot() const {
+    return GameSnapshot{
+        .room_id = room_id,
+        .tick = tick_count,
+        .players = playerStates(),
+    };
 }
