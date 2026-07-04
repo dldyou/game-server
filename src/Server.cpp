@@ -18,9 +18,14 @@
 #include <cstddef>
 #include <cstdio>
 #include <cstdint>
+#include <chrono>
 #include <iostream>
 #include <span>
 #include <utility>
+
+namespace {
+    constexpr auto game_tick_interval = std::chrono::milliseconds(50);
+}
 
 bool Server::handleLogin(int epoll_fd, Session& session, const Packet& packet) {
     if (session.isAuthenticated()) {
@@ -678,6 +683,7 @@ void Server::run(int server_fd, const ServerConfig& server_config) {
     std::vector<epoll_event> events(static_cast<std::size_t>(max_events));
 
     socklen_t sockaddr_len = sizeof(sockaddr_in);
+    auto next_game_tick = std::chrono::steady_clock::now() + game_tick_interval;
 
     if ((epoll_fd = epoll_create1(EPOLL_CLOEXEC)) == -1) {
         perror("epoll_create1");
@@ -733,7 +739,14 @@ void Server::run(int server_fd, const ServerConfig& server_config) {
     }
 
     while (is_running) {
-        event_count = epoll_wait(epoll_fd, events.data(), max_events, -1);
+        const auto now = std::chrono::steady_clock::now();
+        int timeout_ms = 0;
+        if (now < next_game_tick) {
+            const auto remaining_ms = std::chrono::duration_cast<std::chrono::milliseconds>(next_game_tick - now).count();
+            timeout_ms = remaining_ms > 0 ? static_cast<int>(remaining_ms) : 1;
+        }
+
+        event_count = epoll_wait(epoll_fd, events.data(), max_events, timeout_ms);
 
         if (event_count == -1) {
             if (errno == EINTR) {
@@ -741,6 +754,16 @@ void Server::run(int server_fd, const ServerConfig& server_config) {
             }
             perror("epoll_wait");
             break;
+        }
+
+        const auto after_wait = std::chrono::steady_clock::now();
+        while (after_wait >= next_game_tick) {
+            game_manager.tickAll();
+            next_game_tick += game_tick_interval;
+        }
+
+        if (event_count == 0) {
+            continue;
         }
 
         for (int i = 0; i < event_count; ++i) {
