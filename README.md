@@ -55,7 +55,7 @@ game-server/
 │   ├── auth/                       # login request/response protocol and auth result
 │   ├── chat/                       # chat payload protocol
 │   ├── config/                     # config file parser
-│   ├── game/                       # game instance and game manager skeleton
+│   ├── game/                       # game state, movement protocol, and game manager
 │   ├── networks/                   # packet, parser, serializer, session
 │   ├── rooms/                      # room state, room manager, room protocol
 │   ├── users/                      # in-memory user manager
@@ -177,6 +177,7 @@ cmake --build build-warnings --parallel
 | `unready` | Set ready state to false |
 | `start-game` | Owner starts the game when all players are ready |
 | `chat <message>` | Broadcast chat to players in the same room |
+| `move <dx> <dy>` | Send movement input (`-1..1`) |
 | `send <type> [payload]` | Send an arbitrary packet for manual testing |
 | `wait [ms]` | Pause scripted input |
 
@@ -209,10 +210,12 @@ The packet header is 8 bytes. Maximum packet size is limited to 16 KiB.
 | `C2S_START_GAME` | empty |
 | `C2S_CHAT` | `[message_length:u16][message]` |
 | `S2C_CHAT` | `[user_id:u64][handle_length:u16][handle][message_length:u16][message]` |
+| `C2S_MOVE` | `[dx:i16][dy:i16]` |
+| `S2C_SNAPSHOT` | `[room_id:u32][tick:u64][player_count:u16] players...` |
 
 ## Current Limitations
 
 - User data is seeded in memory at server startup.
 - Passwords are currently compared as plain text and should be replaced with hashing.
-- `RoomStatus::Playing` creates a `Game` through `GameManager`, and the server calls `GameManager::tickAll()` on a fixed interval. Gameplay input processing and snapshots are not implemented yet.
+- `RoomStatus::Playing` creates a `Game` through `GameManager`, and the server calls `GameManager::tickAll()` on a fixed interval. Basic movement input and snapshots are implemented; attacks, collision, and game-over rules are not implemented yet.
 - Automated tests are not configured yet; use `test-client` and strict warning builds for smoke validation.
