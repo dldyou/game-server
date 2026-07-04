@@ -33,6 +33,17 @@ bool GameManager::removePlayer(std::uint32_t room_id, std::uint64_t user_id) {
     return removed;
 }
 
+bool GameManager::queueMove(std::uint32_t room_id, GameMoveInput input) {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    auto game_it = games.find(room_id);
+    if (game_it == games.end()) {
+        return false;
+    }
+
+    return game_it->second.queueMove(input);
+}
+
 bool GameManager::hasGame(std::uint32_t room_id) const {
     std::lock_guard<std::mutex> lock(mutex_);
     return games.find(room_id) != games.end();
@@ -46,6 +57,16 @@ std::optional<Game> GameManager::game(std::uint32_t room_id) const {
         return std::nullopt;
     }
     return game_it->second;
+}
+
+std::optional<GameSnapshot> GameManager::snapshot(std::uint32_t room_id) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    auto game_it = games.find(room_id);
+    if (game_it == games.end()) {
+        return std::nullopt;
+    }
+    return game_it->second.snapshot();
 }
 
 std::vector<std::uint32_t> GameManager::gameRoomIds() const {
@@ -66,9 +87,13 @@ std::size_t GameManager::gameCount() const {
     return games.size();
 }
 
-void GameManager::tickAll() {
+std::vector<GameSnapshot> GameManager::tickAll() {
     std::lock_guard<std::mutex> lock(mutex_);
+
+    std::vector<GameSnapshot> snapshots;
+    snapshots.reserve(games.size());
     for (auto& item : games) {
-        item.second.tick();
+        snapshots.push_back(item.second.tick());
     }
+    return snapshots;
 }
