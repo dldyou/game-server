@@ -20,6 +20,7 @@ add_executable(game-server
     src/chat/ChatProtocol.cpp
     src/game/Game.cpp
     src/game/GameManager.cpp
+    src/game/GameProtocol.cpp
 )
 
 target_include_directories(game-server PRIVATE src)
