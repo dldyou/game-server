@@ -38,6 +38,7 @@ public:
     bool allPlayersReady() const;
     bool canStart(std::uint64_t requester_user_id) const;
     bool startGame(std::uint64_t requester_user_id);
+    bool finishGame();
     bool isFull() const;
     bool isWaiting() const { return status == RoomStatus::Waiting; }
     bool isPlaying() const { return status == RoomStatus::Playing; }

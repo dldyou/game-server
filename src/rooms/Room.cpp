@@ -67,6 +67,18 @@ bool Room::startGame(std::uint64_t requester_user_id) {
     return true;
 }
 
+bool Room::finishGame() {
+    if (!isPlaying()) {
+        return false;
+    }
+
+    status = RoomStatus::Waiting;
+    for (auto& item : players) {
+        item.second.ready = false;
+    }
+    return true;
+}
+
 bool Room::isFull() const {
     return players.size() >= max_players;
 }
