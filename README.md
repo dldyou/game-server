@@ -2,7 +2,7 @@
 
 C++23 기반 실시간 멀티플레이어 게임 서버 프로젝트입니다. Linux `epoll`, non-blocking socket, `eventfd`를 사용해 TCP 클라이언트 연결을 처리하고, 로그인, 세션, 패킷 파싱, 룸, 채팅, ready/start 흐름을 구현합니다.
 
-현재는 실제 게임 tick loop 이전 단계까지 구현되어 있으며, `RoomStatus::Playing` 전환 시 `GameManager`가 game instance를 생성하는 골격까지 연결되어 있습니다.
+현재는 `RoomStatus::Playing` 전환 시 `GameManager`가 game instance를 생성하고, 서버 event loop에서 고정 주기로 `GameManager::tickAll()`을 호출하는 골격까지 연결되어 있습니다.
 
 ## Goals
 
@@ -32,7 +32,7 @@ C++23 기반 실시간 멀티플레이어 게임 서버 프로젝트입니다. L
 - [x] 룸 owner / ready / start 상태 구현
 - [x] 룸 단위 채팅 구현
 - [x] 로컬 테스트용 `test-client` 구현
-- [ ] Tick 기반 게임 루프 구현
+- [x] Tick 기반 게임 루프 골격 구현
 - [x] `GameManager` 및 게임 인스턴스 골격 구현
 - [ ] 자동화 테스트 작성
 - [ ] 인증 정보 저장 방식 개선
@@ -214,5 +214,5 @@ The packet header is 8 bytes. Maximum packet size is limited to 16 KiB.
 
 - User data is seeded in memory at server startup.
 - Passwords are currently compared as plain text and should be replaced with hashing.
-- `RoomStatus::Playing` creates a `Game` through `GameManager`, but gameplay tick, input processing, and snapshots are not implemented yet.
+- `RoomStatus::Playing` creates a `Game` through `GameManager`, and the server calls `GameManager::tickAll()` on a fixed interval. Gameplay input processing and snapshots are not implemented yet.
 - Automated tests are not configured yet; use `test-client` and strict warning builds for smoke validation.
