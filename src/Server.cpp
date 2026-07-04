@@ -13,6 +13,7 @@
 #include "auth/LoginProtocol.hpp"
 #include "rooms/RoomProtocol.hpp"
 #include "chat/ChatProtocol.hpp"
+#include "game/GameProtocol.hpp"
 
 #include <cerrno>
 #include <cstddef>
@@ -227,6 +228,31 @@ bool Server::handleStartGame(int epoll_fd, Session& session, const Packet& packe
     return true;
 }
 
+bool Server::handleMove(int, Session& session, const Packet& packet) {
+    const AuthenticatedUser* user = session.authenticatedUser();
+    if (user == nullptr) {
+        std::cerr << "Unauthenticated move packet\n";
+        return true;
+    }
+
+    auto move = GameProtocol::decodeMove(user->user_id, packet.payload);
+    if (!move) {
+        std::cerr << "Invalid move payload from session " << session.fd() << "\n";
+        return true;
+    }
+
+    auto room_id = session.currentRoomId();
+    if (!room_id) {
+        std::cerr << "Move from session outside room: " << session.fd() << "\n";
+        return true;
+    }
+
+    if (!game_manager.queueMove(*room_id, *move)) {
+        std::cerr << "Move ignored for user " << user->user_id << " in room " << *room_id << "\n";
+    }
+    return true;
+}
+
 bool Server::handleChat(int epoll_fd, Session& session, const Packet& packet) {
     const AuthenticatedUser* user = session.authenticatedUser();
     if (user == nullptr) {
@@ -330,6 +356,35 @@ bool Server::sendRoomList(int epoll_fd, Session& session, std::uint32_t sequence
     return queuePacket(epoll_fd, session, packet);
 }
 
+bool Server::sendGameSnapshot(int epoll_fd, Session& session, const GameSnapshot& snapshot) {
+    Packet packet{
+        .type = S2C_SNAPSHOT,
+        .sequence = static_cast<std::uint32_t>(snapshot.tick & 0xffffffffULL),
+        .payload = GameProtocol::encodeSnapshot(snapshot),
+    };
+
+    if (packet.payload.empty()) {
+        std::cerr << "Failed to encode game snapshot payload\n";
+        return false;
+    }
+
+    return queuePacket(epoll_fd, session, packet);
+}
+
+bool Server::broadcastGameSnapshot(int epoll_fd, const GameSnapshot& snapshot) {
+    for (const GamePlayerState& player : snapshot.players) {
+        auto session_it = sessions.find(player.session_fd);
+        if (session_it == sessions.end()) {
+            continue;
+        }
+
+        if (!sendGameSnapshot(epoll_fd, session_it->second, snapshot)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool Server::broadcastRoomState(int epoll_fd, std::uint32_t sequence, const RoomState& state) {
     for (const RoomPlayer& player : state.players) {
         auto session_it = sessions.find(player.session_fd);
@@ -431,6 +486,7 @@ bool Server::handlePacket(int epoll_fd, Session& session, const Packet& packet) 
     case C2S_CHAT:
         return handleChat(epoll_fd, session, packet);
     case C2S_MOVE:
+        return handleMove(epoll_fd, session, packet);
     case C2S_ATTACK:
         return true;
     default:
@@ -758,7 +814,12 @@ void Server::run(int server_fd, const ServerConfig& server_config) {
 
         const auto after_wait = std::chrono::steady_clock::now();
         while (after_wait >= next_game_tick) {
-            game_manager.tickAll();
+            std::vector<GameSnapshot> snapshots = game_manager.tickAll();
+            for (const GameSnapshot& snapshot : snapshots) {
+                if (!broadcastGameSnapshot(epoll_fd, snapshot)) {
+                    std::cerr << "Failed to broadcast game snapshot for room " << snapshot.room_id << "\n";
+                }
+            }
             next_game_tick += game_tick_interval;
         }
 
