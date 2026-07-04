@@ -54,6 +54,19 @@ bool parseUnsigned(
     value = parsed;
     return true;
 }
+bool parseUnsigned64(std::string_view text, std::uint64_t max_value, std::uint64_t& value) {
+    std::uint64_t parsed = 0;
+    const char* begin = text.data();
+    const char* end = begin + text.size();
+    const auto result = std::from_chars(begin, end, parsed);
+
+    if (result.ec != std::errc{} || result.ptr != end || parsed > max_value) {
+        return false;
+    }
+
+    value = parsed;
+    return true;
+}
 bool parseSigned(
     std::string_view text,
     std::int32_t min_value,
@@ -161,6 +174,11 @@ void appendU32(std::vector<char>& buffer, std::uint32_t value) {
     buffer.insert(buffer.end(), bytes, bytes + sizeof(network_value));
 }
 
+void appendU64(std::vector<char>& buffer, std::uint64_t value) {
+    for (int shift = 56; shift >= 0; shift -= 8) {
+        buffer.push_back(static_cast<char>((value >> shift) & 0xffU));
+    }
+}
 std::vector<char> makeLoginPayload(
     const std::string& id,
     const std::string& password
@@ -227,6 +245,16 @@ std::vector<char> makeMovePayload(std::int16_t dx, std::int16_t dy) {
     appendI16(payload, dy);
     return payload;
 }
+std::vector<char> makeAttackPayload(std::uint64_t target_user_id) {
+    if (target_user_id == 0) {
+        return {};
+    }
+
+    std::vector<char> payload;
+    payload.reserve(8);
+    appendU64(payload, target_user_id);
+    return payload;
+}
 std::string packetTypeName(PacketType type) {
     switch (type) {
     case C2S_PING: return "C2S_PING";
@@ -253,6 +281,7 @@ std::string packetTypeName(PacketType type) {
     case S2C_SNAPSHOT: return "S2C_SNAPSHOT";
     case S2C_PLAYER_MOVED: return "S2C_PLAYER_MOVED";
     case S2C_ATTACK: return "S2C_ATTACK";
+    case S2C_GAME_ENDED: return "S2C_GAME_ENDED";
     case S2C_ERROR: return "S2C_ERROR";
     }
     return "UNKNOWN";
@@ -403,6 +432,25 @@ std::string roomStatusName(std::uint16_t status) {
     }
 }
 
+std::string attackResultName(std::uint16_t result) {
+    switch (result) {
+    case 0: return "Hit";
+    case 1: return "InvalidTarget";
+    case 2: return "OutOfRange";
+    case 3: return "AttackerDead";
+    case 4: return "TargetDead";
+    case 5: return "SelfTarget";
+    default: return "Unknown";
+    }
+}
+
+std::string gameEndReasonName(std::uint16_t reason) {
+    switch (reason) {
+    case 0: return "LastPlayerStanding";
+    case 1: return "NoPlayers";
+    default: return "Unknown";
+    }
+}
 std::string formatLoginResult(std::span<const char> payload) {
     std::uint16_t result = 0;
     if (!readU16(payload, 0, result)) {
@@ -621,6 +669,45 @@ std::string formatSnapshot(std::span<const char> payload) {
     output << ']';
     return output.str();
 }
+std::string formatAttackEvent(std::span<const char> payload) {
+    std::uint32_t room_id = 0;
+    std::uint64_t tick = 0;
+    std::uint64_t attacker_user_id = 0;
+    std::uint64_t target_user_id = 0;
+    std::uint16_t result = 0;
+    std::uint16_t damage = 0;
+    std::uint16_t target_hp = 0;
+    if (payload.size() != 34 || !readU32(payload, 0, room_id) || !readU64(payload, 4, tick) || !readU64(payload, 12, attacker_user_id) || !readU64(payload, 20, target_user_id) || !readU16(payload, 28, result) || !readU16(payload, 30, damage) || !readU16(payload, 32, target_hp)) {
+        return " attack=<malformed>";
+    }
+
+    std::ostringstream output;
+    output << " attack room_id=" << room_id
+           << " tick=" << tick
+           << " attacker=" << attacker_user_id
+           << " target=" << target_user_id
+           << " result=" << attackResultName(result) << '(' << result << ')'
+           << " damage=" << damage
+           << " target_hp=" << target_hp;
+    return output.str();
+}
+
+std::string formatGameEnded(std::span<const char> payload) {
+    std::uint32_t room_id = 0;
+    std::uint64_t tick = 0;
+    std::uint64_t winner_user_id = 0;
+    std::uint16_t reason = 0;
+    if (payload.size() != 22 || !readU32(payload, 0, room_id) || !readU64(payload, 4, tick) || !readU64(payload, 12, winner_user_id) || !readU16(payload, 20, reason)) {
+        return " game_ended=<malformed>";
+    }
+
+    std::ostringstream output;
+    output << " game_ended room_id=" << room_id
+           << " tick=" << tick
+           << " winner_user_id=" << winner_user_id
+           << " reason=" << gameEndReasonName(reason) << '(' << reason << ')';
+    return output.str();
+}
 std::string formatPacket(const Packet& packet) {
     std::ostringstream output;
     output << "[recv] type=" << packetTypeName(packet.type)
@@ -644,6 +731,10 @@ std::string formatPacket(const Packet& packet) {
         output << formatChatMessage(packet.payload);
     } else if (packet.type == S2C_SNAPSHOT) {
         output << formatSnapshot(packet.payload);
+    } else if (packet.type == S2C_ATTACK) {
+        output << formatAttackEvent(packet.payload);
+    } else if (packet.type == S2C_GAME_ENDED) {
+        output << formatGameEnded(packet.payload);
     } else {
         output << formatPayload(packet.payload);
     }
@@ -733,6 +824,7 @@ void printHelp() {
         "  unready                 send C2S_SET_READY false\n"
         "  start-game              send C2S_START_GAME\n"
         "  move <dx> <dy>          send C2S_MOVE (-1..1)\n"
+        "  attack <target_user_id> send C2S_ATTACK\n"
         "  chat <message>          send C2S_CHAT\n"
         "  send <type> [payload]   send an arbitrary packet type\n"
         "  wait [ms]               pause before the next command\n"
@@ -923,6 +1015,18 @@ int main(int argc, char* argv[]) {
 
             packet.type = C2S_MOVE;
             packet.payload = makeMovePayload(static_cast<std::int16_t>(dx), static_cast<std::int16_t>(dy));
+        } else if (command == "attack") {
+            std::string target_text;
+            input >> target_text;
+
+            std::uint64_t target_user_id = 0;
+            if (!parseUnsigned64(target_text, std::numeric_limits<std::uint64_t>::max(), target_user_id) || target_user_id == 0) {
+                printLine("[error] usage: attack <target_user_id>");
+                continue;
+            }
+
+            packet.type = C2S_ATTACK;
+            packet.payload = makeAttackPayload(target_user_id);
         } else if (command == "chat") {
             packet.type = C2S_CHAT;
             const std::string message = remainingText(input);
