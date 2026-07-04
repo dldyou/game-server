@@ -11,6 +11,8 @@
 #include "networks/Session.hpp"
 #include "users/UserManager.hpp"
 #include "auth/LoginProtocol.hpp"
+#include "rooms/RoomManager.hpp"
+#include "game/GameManager.hpp"
 
 class Server {
 private:
@@ -22,6 +24,8 @@ private:
     std::mutex wake_mutex;
 
     UserManager user_manager;
+    RoomManager room_manager;
+    GameManager game_manager;
 
     void initClients();
     bool setNonBlocking(int fd);
@@ -35,13 +39,27 @@ private:
     bool flushSendQueue(int epoll_fd, Session& session);
 
     bool handleLogin(int epoll_fd, Session& session, const Packet& packet);
+    bool handleCreateRoom(int epoll_fd, Session& session, const Packet& packet);
+    bool handleJoinRoom(int epoll_fd, Session& session, const Packet& packet);
+    bool handleLeaveRoom(int epoll_fd, Session& session, const Packet& packet);
+    bool handleRoomList(int epoll_fd, Session& session, const Packet& packet);
+    bool handleSetReady(int epoll_fd, Session& session, const Packet& packet);
+    bool handleStartGame(int epoll_fd, Session& session, const Packet& packet);
+    bool handleMove(int epoll_fd, Session& session, const Packet& packet);
+    bool handleAttack(int epoll_fd, Session& session, const Packet& packet);
+    bool handleChat(int epoll_fd, Session& session, const Packet& packet);
 
-    bool sendLoginResult(
-        int epoll_fd,
-        Session& session,
-        std::uint32_t sequence,
-        LoginResponse response
-    );
+    bool sendLoginResult(int epoll_fd, Session& session, std::uint32_t sequence, LoginResponse response);
+    bool sendRoomResult(int epoll_fd, Session& session, std::uint32_t sequence, PacketType type, RoomResult result, std::uint32_t room_id);
+    bool sendRoomState(int epoll_fd, Session& session, std::uint32_t sequence, const RoomState& state);
+    bool sendRoomList(int epoll_fd, Session& session, std::uint32_t sequence, const std::vector<RoomSummary>& rooms);
+    bool sendGameSnapshot(int epoll_fd, Session& session, const GameSnapshot& snapshot);
+    bool sendAttackEvent(int epoll_fd, Session& session, const GameAttackEvent& event);
+    bool sendGameEnded(int epoll_fd, Session& session, const GameEndEvent& event);
+    bool broadcastGameSnapshot(int epoll_fd, const GameSnapshot& snapshot);
+    bool broadcastAttackEvent(int epoll_fd, const GameSnapshot& snapshot, const GameAttackEvent& event);
+    bool broadcastGameEnded(int epoll_fd, const GameSnapshot& snapshot, const GameEndEvent& event);
+    bool broadcastRoomState(int epoll_fd, std::uint32_t sequence, const RoomState& state);
 
     bool requiresAuthentication(PacketType type) const;
 
