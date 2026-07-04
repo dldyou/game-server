@@ -54,6 +54,27 @@ bool parseUnsigned(
     value = parsed;
     return true;
 }
+bool parseSigned(
+    std::string_view text,
+    std::int32_t min_value,
+    std::int32_t max_value,
+    std::int32_t& value
+) {
+    std::int32_t parsed = 0;
+    const char* begin = text.data();
+    const char* end = begin + text.size();
+    const auto result = std::from_chars(begin, end, parsed);
+
+    if (result.ec != std::errc{} ||
+        result.ptr != end ||
+        parsed < min_value ||
+        parsed > max_value) {
+        return false;
+    }
+
+    value = parsed;
+    return true;
+}
 
 int connectToServer(const std::string& host, std::uint16_t port) {
     const int fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -126,6 +147,12 @@ void appendU16(std::vector<char>& buffer, std::uint16_t value) {
         reinterpret_cast<const char*>(&network_value);
     buffer.insert(buffer.end(), bytes, bytes + sizeof(network_value));
 }
+void appendI16(std::vector<char>& buffer, std::int16_t value) {
+    const std::uint16_t network_value = htons(static_cast<std::uint16_t>(value));
+    const auto* bytes =
+        reinterpret_cast<const char*>(&network_value);
+    buffer.insert(buffer.end(), bytes, bytes + sizeof(network_value));
+}
 
 void appendU32(std::vector<char>& buffer, std::uint32_t value) {
     const std::uint32_t network_value = htonl(value);
@@ -187,6 +214,17 @@ std::vector<char> makeChatPayload(const std::string& message) {
     payload.reserve(2 + message.size());
     appendU16(payload, static_cast<std::uint16_t>(message.size()));
     payload.insert(payload.end(), message.begin(), message.end());
+    return payload;
+}
+std::vector<char> makeMovePayload(std::int16_t dx, std::int16_t dy) {
+    if (dx < -1 || dx > 1 || dy < -1 || dy > 1) {
+        return {};
+    }
+
+    std::vector<char> payload;
+    payload.reserve(4);
+    appendI16(payload, dx);
+    appendI16(payload, dy);
     return payload;
 }
 std::string packetTypeName(PacketType type) {
@@ -309,6 +347,23 @@ bool readU32(
         sizeof(network_value)
     );
     value = ntohl(network_value);
+    return true;
+}
+bool readI32(
+    std::span<const char> payload,
+    std::size_t offset,
+    std::int32_t& value
+) {
+    std::uint32_t raw = 0;
+    if (!readU32(payload, offset, raw)) {
+        return false;
+    }
+
+    if (raw <= 0x7fffffffU) {
+        value = static_cast<std::int32_t>(raw);
+    } else {
+        value = static_cast<std::int32_t>(static_cast<std::int64_t>(raw) - 0x100000000LL);
+    }
     return true;
 }
 
@@ -531,6 +586,41 @@ std::string formatChatMessage(std::span<const char> payload) {
            << " message=\"" << std::string(payload.begin() + static_cast<std::ptrdiff_t>(message_offset), payload.end()) << '"';
     return output.str();
 }
+std::string formatSnapshot(std::span<const char> payload) {
+    std::uint32_t room_id = 0;
+    std::uint64_t tick = 0;
+    std::uint16_t player_count = 0;
+    if (!readU32(payload, 0, room_id) || !readU64(payload, 4, tick) || !readU16(payload, 12, player_count)) {
+        return " snapshot=<malformed>";
+    }
+
+    std::ostringstream output;
+    output << " snapshot room_id=" << room_id << " tick=" << tick << " players=[";
+
+    std::size_t offset = 14;
+    for (std::uint16_t i = 0; i < player_count; ++i) {
+        std::uint64_t user_id = 0;
+        std::int32_t x = 0;
+        std::int32_t y = 0;
+        std::uint16_t hp = 0;
+        if (!readU64(payload, offset, user_id) || !readI32(payload, offset + 8, x) || !readI32(payload, offset + 12, y) || !readU16(payload, offset + 16, hp)) {
+            return " snapshot=<malformed>";
+        }
+
+        if (i != 0) {
+            output << ',';
+        }
+        output << user_id << ":(" << x << ',' << y << ",hp=" << hp << ')';
+        offset += 18;
+    }
+
+    if (offset != payload.size()) {
+        return " snapshot=<malformed>";
+    }
+
+    output << ']';
+    return output.str();
+}
 std::string formatPacket(const Packet& packet) {
     std::ostringstream output;
     output << "[recv] type=" << packetTypeName(packet.type)
@@ -552,6 +642,8 @@ std::string formatPacket(const Packet& packet) {
         output << formatRoomList(packet.payload);
     } else if (packet.type == S2C_CHAT) {
         output << formatChatMessage(packet.payload);
+    } else if (packet.type == S2C_SNAPSHOT) {
+        output << formatSnapshot(packet.payload);
     } else {
         output << formatPayload(packet.payload);
     }
@@ -640,6 +732,7 @@ void printHelp() {
         "  ready                   send C2S_SET_READY true\n"
         "  unready                 send C2S_SET_READY false\n"
         "  start-game              send C2S_START_GAME\n"
+        "  move <dx> <dy>          send C2S_MOVE (-1..1)\n"
         "  chat <message>          send C2S_CHAT\n"
         "  send <type> [payload]   send an arbitrary packet type\n"
         "  wait [ms]               pause before the next command\n"
@@ -816,6 +909,20 @@ int main(int argc, char* argv[]) {
             packet.payload = { static_cast<char>(0) };
         } else if (command == "start-game") {
             packet.type = C2S_START_GAME;
+        } else if (command == "move") {
+            std::string dx_text;
+            std::string dy_text;
+            input >> dx_text >> dy_text;
+
+            std::int32_t dx = 0;
+            std::int32_t dy = 0;
+            if (!parseSigned(dx_text, -1, 1, dx) || !parseSigned(dy_text, -1, 1, dy)) {
+                printLine("[error] usage: move <dx> <dy> (each -1..1)");
+                continue;
+            }
+
+            packet.type = C2S_MOVE;
+            packet.payload = makeMovePayload(static_cast<std::int16_t>(dx), static_cast<std::int16_t>(dy));
         } else if (command == "chat") {
             packet.type = C2S_CHAT;
             const std::string message = remainingText(input);
