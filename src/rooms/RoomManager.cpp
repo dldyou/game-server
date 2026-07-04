@@ -217,6 +217,18 @@ RoomOperationResult RoomManager::startGame(std::uint64_t user_id) {
     return { RoomResult::Success, room_id };
 }
 
+bool RoomManager::finishGame(std::uint32_t room_id) {
+    if (room_id == 0) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto room_it = rooms.find(room_id);
+    if (room_it == rooms.end()) {
+        return false;
+    }
+    return room_it->second.finishGame();
+}
 void RoomManager::removeSession(std::uint64_t user_id) {
     if (user_id == 0) {
         return;

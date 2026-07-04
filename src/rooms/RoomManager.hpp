@@ -69,6 +69,7 @@ public:
     RoomOperationResult leaveRoom(std::uint64_t user_id);
     RoomOperationResult setReady(std::uint64_t user_id, bool ready);
     RoomOperationResult startGame(std::uint64_t user_id);
+    bool finishGame(std::uint32_t room_id);
 
     void removeSession(std::uint64_t user_id);
     std::optional<std::uint32_t> roomIdOf(std::uint64_t user_id) const;
