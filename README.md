@@ -2,7 +2,7 @@
 
 C++23 기반 실시간 멀티플레이어 게임 서버 프로젝트입니다. Linux `epoll`, non-blocking socket, `eventfd`를 사용해 TCP 클라이언트 연결을 처리하고, 로그인, 세션, 패킷 파싱, 룸, 채팅, ready/start 흐름을 구현합니다.
 
-현재는 `RoomStatus::Playing` 전환 시 `GameManager`가 game instance를 생성하고, 서버 event loop에서 고정 주기로 `GameManager::tickAll()`을 호출하는 골격까지 연결되어 있습니다.
+현재는 `RoomStatus::Playing` 전환 시 `GameManager`가 game instance를 생성하고, 서버 event loop에서 고정 주기로 movement, attack, snapshot, game-ended 흐름을 처리합니다.
 
 ## Goals
 
@@ -32,8 +32,9 @@ C++23 기반 실시간 멀티플레이어 게임 서버 프로젝트입니다. L
 - [x] 룸 owner / ready / start 상태 구현
 - [x] 룸 단위 채팅 구현
 - [x] 로컬 테스트용 `test-client` 구현
-- [x] Tick 기반 게임 루프 골격 구현
-- [x] `GameManager` 및 게임 인스턴스 골격 구현
+- [x] Tick 기반 게임 루프 구현
+- [x] `GameManager` 및 게임 인스턴스 구현
+- [x] 이동 / 충돌 / 공격 / HP / 게임 종료 흐름 구현
 - [ ] 자동화 테스트 작성
 - [ ] 인증 정보 저장 방식 개선
 
@@ -178,6 +179,7 @@ cmake --build build-warnings --parallel
 | `start-game` | Owner starts the game when all players are ready |
 | `chat <message>` | Broadcast chat to players in the same room |
 | `move <dx> <dy>` | Send movement input (`-1..1`) |
+| `attack <target_user_id>` | Attack a nearby player |
 | `send <type> [payload]` | Send an arbitrary packet for manual testing |
 | `wait [ms]` | Pause scripted input |
 
@@ -211,11 +213,14 @@ The packet header is 8 bytes. Maximum packet size is limited to 16 KiB.
 | `C2S_CHAT` | `[message_length:u16][message]` |
 | `S2C_CHAT` | `[user_id:u64][handle_length:u16][handle][message_length:u16][message]` |
 | `C2S_MOVE` | `[dx:i16][dy:i16]` |
+| `C2S_ATTACK` | `[target_user_id:u64]` |
 | `S2C_SNAPSHOT` | `[room_id:u32][tick:u64][player_count:u16] players...` |
+| `S2C_ATTACK` | `[room_id:u32][tick:u64][attacker_user_id:u64][target_user_id:u64][result:u16][damage:u16][target_hp:u16]` |
+| `S2C_GAME_ENDED` | `[room_id:u32][tick:u64][winner_user_id:u64][reason:u16]` |
 
 ## Current Limitations
 
 - User data is seeded in memory at server startup.
 - Passwords are currently compared as plain text and should be replaced with hashing.
-- `RoomStatus::Playing` creates a `Game` through `GameManager`, and the server calls `GameManager::tickAll()` on a fixed interval. Basic movement input and snapshots are implemented; attacks, collision, and game-over rules are not implemented yet.
+- Gameplay currently uses a simple fixed arena (`-10..10`), one queued move and one queued attack per player per tick, 25 damage per hit, and no cooldown or advanced skills yet.
 - Automated tests are not configured yet; use `test-client` and strict warning builds for smoke validation.
