@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -63,9 +64,18 @@ S2C_CHAT
 C2S_MOVE
 [dx:i16][dy:i16]
 
+C2S_ATTACK
+[target_user_id:u64]
+
 S2C_SNAPSHOT
 [room_id:u32][tick:u64][player_count:u16]
 players: [user_id:u64][x:i32][y:i32][hp:u16] ...
+
+S2C_ATTACK
+[room_id:u32][tick:u64][attacker_user_id:u64][target_user_id:u64][result:u16][damage:u16][target_hp:u16]
+
+S2C_GAME_ENDED
+[room_id:u32][tick:u64][winner_user_id:u64][reason:u16]
 */
 
 enum PacketType : std::uint16_t {
@@ -97,6 +107,7 @@ enum PacketType : std::uint16_t {
     S2C_SNAPSHOT = 402,
     S2C_PLAYER_MOVED = 403,
     S2C_ATTACK = 404,
+    S2C_GAME_ENDED = 405,
 
     S2C_ERROR = 900,
 };
