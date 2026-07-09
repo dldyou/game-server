@@ -5,5 +5,5 @@ if [ "$1" == "clean" ]; then
     exit 0
 fi
 
-mkdir -p build & cd build
-cmake .. & cmake --build .
+mkdir -p build && cd build
+cmake .. && cmake --build .
